@@ -219,6 +219,26 @@
     {:type (name (:type thinking-config))
      :budget_tokens (:budget-tokens thinking-config)}))
 
+(defn inject-json-system-prompt
+  "Inject JSON output instructions into the system prompt for Anthropic.
+  Returns the (possibly augmented) system prompt string, or nil if neither
+  a system prompt nor a response-format was provided."
+  [system-prompt response-format]
+  (if-not response-format
+    system-prompt
+    (let [json-instruction
+          (case (:type response-format)
+            :json-object "Always respond with valid JSON only. Do not include any text outside the JSON."
+            :json-schema  (let [js (:json-schema response-format)]
+                            (str "Always respond with valid JSON only matching this schema:\n"
+                                 (json/encode (:schema js))
+                                 "\nDo not include any text outside the JSON."))
+            nil)]
+      (cond
+        (nil? json-instruction) system-prompt
+        system-prompt (str system-prompt "\n\n" json-instruction)
+        :else json-instruction))))
+
 (defn transform-request-impl
   "Anthropic-specific transform-request implementation"
   [provider-name request config]
@@ -237,17 +257,20 @@
                      :max_tokens (:max-tokens request 1024)
                      :stream (:stream request false)}]
     
-    ;; Add system prompt, messages, tools, thinking if present
-    ;; Only add one of temperature or top_p (Anthropic constraint)
-    (cond-> transformed
-      has-temperature? (assoc :temperature (:temperature request))
-      (and has-top-p? (not has-temperature?)) (assoc :top_p (:top-p request))
-      (and (not has-temperature?) (not has-top-p?)) (assoc :temperature 1.0)
-      (:system messages-data) (assoc :system (:system messages-data))
-      (:messages messages-data) (assoc :messages (:messages messages-data))
-      (:tools request) (assoc :tools (transform-tools (:tools request)))
-      (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request)))
-      thinking-param (assoc :thinking thinking-param))))
+    ;; Merge JSON mode instructions into system prompt if response-format is set
+    (let [raw-system (:system messages-data)
+          final-system (inject-json-system-prompt raw-system (:response-format request))]
+      ;; Add system prompt, messages, tools, thinking if present
+      ;; Only add one of temperature or top_p (Anthropic constraint)
+      (cond-> transformed
+        has-temperature? (assoc :temperature (:temperature request))
+        (and has-top-p? (not has-temperature?)) (assoc :top_p (:top-p request))
+        (and (not has-temperature?) (not has-top-p?)) (assoc :temperature 1.0)
+        final-system (assoc :system final-system)
+        (:messages messages-data) (assoc :messages (:messages messages-data))
+        (:tools request) (assoc :tools (transform-tools (:tools request)))
+        (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request)))
+        thinking-param (assoc :thinking thinking-param)))))
 
 (defn make-request-impl
   "Anthropic-specific make-request implementation"

@@ -67,14 +67,17 @@
 (defn transform-generation-config
   "Transform generation config to Gemini format"
   [request]
-  (let [config {}]
+  (let [config {}
+        rf (:response-format request)]
     (cond-> config
       (:temperature request) (assoc :temperature (:temperature request))
       (:top-p request) (assoc :topP (:top-p request))
       (:max-tokens request) (assoc :maxOutputTokens (:max-tokens request))
       (:stop request) (assoc :stopSequences (if (string? (:stop request))
                                               [(:stop request)]
-                                              (:stop request))))))
+                                              (:stop request)))
+      (#{:json-object :json-schema} (:type rf)) (assoc :responseMimeType "application/json")
+      (= :json-schema (:type rf)) (assoc :responseSchema (get-in rf [:json-schema :schema])))))
 
 ;; ============================================================================
 ;; Response Transformations

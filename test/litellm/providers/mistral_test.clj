@@ -168,3 +168,22 @@
       (is (= "mistral-small-latest" (:model transformed)))
       ;; Should not have added system message
       (is (= 1 (count (:messages transformed)))))))
+
+;; ============================================================================
+;; Response Format / JSON Output Tests
+;; ============================================================================
+
+(deftest test-transform-request-json-object-format
+  (testing "transform-request-impl includes response_format for :json-object"
+    (let [request {:model "mistral-small-latest"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :response-format {:type :json-object}}
+          result (mistral/transform-request-impl :mistral request {})]
+      (is (= {:type "json_object"} (:response_format result))))))
+
+(deftest test-transform-request-no-response-format
+  (testing "transform-request-impl does not add response_format when absent"
+    (let [request {:model "mistral-small-latest"
+                   :messages [{:role :user :content "Hello"}]}
+          result (mistral/transform-request-impl :mistral request {})]
+      (is (nil? (:response_format result))))))

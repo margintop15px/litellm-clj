@@ -187,3 +187,36 @@
       (is (= :assistant (get-in transformed [:message :role])))
       (is (= "Hello there" (get-in transformed [:message :content])))
       (is (= :stop (:finish-reason transformed))))))
+
+;; ============================================================================
+;; Response Format / JSON Output Tests
+;; ============================================================================
+
+(deftest test-transform-generation-config-json-object
+  (testing "Sets responseMimeType for :json-object"
+    (let [request {:response-format {:type :json-object}}
+          result (gemini/transform-generation-config request)]
+      (is (= "application/json" (:responseMimeType result)))
+      (is (nil? (:responseSchema result))))))
+
+(deftest test-transform-generation-config-json-schema
+  (testing "Sets responseMimeType and responseSchema for :json-schema"
+    (let [schema {:type "object" :properties {:age {:type "integer"}}}
+          request {:response-format {:type :json-schema
+                                     :json-schema {:name "user" :schema schema}}}
+          result (gemini/transform-generation-config request)]
+      (is (= "application/json" (:responseMimeType result)))
+      (is (= schema (:responseSchema result))))))
+
+(deftest test-transform-generation-config-no-response-format
+  (testing "No responseMimeType when response-format absent"
+    (let [result (gemini/transform-generation-config {:temperature 0.7})]
+      (is (nil? (:responseMimeType result))))))
+
+(deftest test-transform-request-json-object
+  (testing "transform-request-impl passes responseMimeType in generation_config"
+    (let [request {:model "gemini-1.5-flash"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :response-format {:type :json-object}}
+          result (gemini/transform-request-impl :gemini request {})]
+      (is (= "application/json" (get-in result [:generation_config :responseMimeType]))))))

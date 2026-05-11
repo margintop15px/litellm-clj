@@ -186,23 +186,29 @@
                        model)
         messages (:messages request)]
 
-    (if is-chat
-      ;; Chat API format (supports tools)
-      (cond-> {:model actual-model
-               :messages (transform-messages-for-chat messages)
-               :stream (:stream request false)}
-        (:format request) (assoc :format (:format request))
-        (:tools request) (assoc :tools (transform-tools (:tools request)))
-        (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request))))
+    (let [ollama-format (case (get-in request [:response-format :type])
+                          :json-object "json"
+                          :json-schema (get-in request [:response-format :json-schema :schema])
+                          nil)
+          ;; Prefer explicit :format key, fall back to derived ollama-format
+          resolved-format (or (:format request) ollama-format)]
+      (if is-chat
+        ;; Chat API format (supports tools)
+        (cond-> {:model actual-model
+                 :messages (transform-messages-for-chat messages)
+                 :stream (:stream request false)}
+          resolved-format (assoc :format resolved-format)
+          (:tools request) (assoc :tools (transform-tools (:tools request)))
+          (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request))))
 
-      ;; Generate API format (no tool support)
-      (cond-> {:model actual-model
-               :prompt (transform-messages-for-generate messages)
-               :stream (:stream request false)
-               :options {:num_predict (or (:max-tokens request) 128)
-                        :temperature (or (:temperature request) 0.7)
-                        :top_p (or (:top-p request) 1.0)}}
-        (:format request) (assoc :format (:format request))))))
+        ;; Generate API format (no tool support)
+        (cond-> {:model actual-model
+                 :prompt (transform-messages-for-generate messages)
+                 :stream (:stream request false)
+                 :options {:num_predict (or (:max-tokens request) 128)
+                          :temperature (or (:temperature request) 0.7)
+                          :top_p (or (:top-p request) 1.0)}}
+          resolved-format (assoc :format resolved-format))))))
 
 (defn make-request-impl
   "Ollama-specific make-request implementation"

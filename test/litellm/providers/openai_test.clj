@@ -191,3 +191,59 @@
         (is (contains? cost :output))
         (is (number? (:input cost)))
         (is (zero? (:output cost)))))))
+
+;; ============================================================================
+;; Response Format / JSON Output Tests
+;; ============================================================================
+
+(deftest test-transform-response-format-json-object
+  (testing "Transform json-object response format"
+    (let [rf {:type :json-object}
+          result (openai/transform-response-format rf)]
+      (is (= "json_object" (:type result))))))
+
+(deftest test-transform-response-format-text
+  (testing "Transform text response format"
+    (let [rf {:type :text}
+          result (openai/transform-response-format rf)]
+      (is (= "text" (:type result))))))
+
+(deftest test-transform-response-format-json-schema
+  (testing "Transform json-schema response format"
+    (let [schema {:type "object"
+                  :properties {:name {:type "string"}}
+                  :required ["name"]}
+          rf {:type :json-schema
+              :json-schema {:name "person" :schema schema :strict true}}
+          result (openai/transform-response-format rf)]
+      (is (= "json_schema" (:type result)))
+      (is (= "person" (get-in result [:json_schema :name])))
+      (is (= schema (get-in result [:json_schema :schema])))
+      (is (true? (get-in result [:json_schema :strict]))))))
+
+(deftest test-transform-request-with-json-object-format
+  (testing "transform-request-impl includes response_format for json-object"
+    (let [request {:model "gpt-4o"
+                   :messages [{:role :user :content "Give me some JSON"}]
+                   :response-format {:type :json-object}}
+          result (openai/transform-request-impl :openai request {})]
+      (is (= {:type "json_object"} (:response_format result))))))
+
+(deftest test-transform-request-with-json-schema-format
+  (testing "transform-request-impl includes response_format for json-schema"
+    (let [schema {:type "object" :properties {:age {:type "integer"}}}
+          request {:model "gpt-4o"
+                   :messages [{:role :user :content "Give me some JSON"}]
+                   :response-format {:type :json-schema
+                                     :json-schema {:name "user" :schema schema}}}
+          result (openai/transform-request-impl :openai request {})]
+      (is (= "json_schema" (get-in result [:response_format :type])))
+      (is (= "user" (get-in result [:response_format :json_schema :name])))
+      (is (= schema (get-in result [:response_format :json_schema :schema]))))))
+
+(deftest test-transform-request-without-response-format
+  (testing "transform-request-impl does not add response_format when absent"
+    (let [request {:model "gpt-4o"
+                   :messages [{:role :user :content "Hello"}]}
+          result (openai/transform-request-impl :openai request {})]
+      (is (nil? (:response_format result))))))

@@ -290,3 +290,50 @@
       
       (is (= "msg_789" (:id result)))
       (is (= "Let me analyze this..." (get-in result [:choices 0 :delta :reasoning-content]))))))
+
+;; ============================================================================
+;; Response Format / JSON Output Tests
+;; ============================================================================
+
+(deftest test-inject-json-system-prompt-json-object
+  (testing "Injects JSON instruction when response-format is :json-object"
+    (let [result (anthropic/inject-json-system-prompt nil {:type :json-object})]
+      (is (string? result))
+      (is (.contains result "JSON")))))
+
+(deftest test-inject-json-system-prompt-appends-to-existing
+  (testing "Appends JSON instruction to existing system prompt"
+    (let [result (anthropic/inject-json-system-prompt "You are helpful." {:type :json-object})]
+      (is (.startsWith result "You are helpful."))
+      (is (.contains result "JSON")))))
+
+(deftest test-inject-json-system-prompt-json-schema
+  (testing "Injects schema into system prompt for :json-schema"
+    (let [schema {:type "object" :properties {:name {:type "string"}}}
+          result (anthropic/inject-json-system-prompt nil {:type :json-schema
+                                                           :json-schema {:name "p" :schema schema}})]
+      (is (.contains result "schema"))
+      (is (.contains result "JSON")))))
+
+(deftest test-inject-json-system-prompt-nil-format
+  (testing "Returns original system prompt unchanged when no response-format"
+    (is (nil? (anthropic/inject-json-system-prompt nil nil)))
+    (is (= "base" (anthropic/inject-json-system-prompt "base" nil)))))
+
+(deftest test-transform-request-json-object-injects-system
+  (testing "transform-request-impl injects JSON instruction into system field"
+    (let [request {:model "claude-3-haiku-20240307"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :max-tokens 100
+                   :response-format {:type :json-object}}
+          result (anthropic/transform-request-impl :anthropic request {})]
+      (is (string? (:system result)))
+      (is (.contains (:system result) "JSON")))))
+
+(deftest test-transform-request-no-response-format-no-system-injection
+  (testing "transform-request-impl without response-format does not add system for JSON"
+    (let [request {:model "claude-3-haiku-20240307"
+                   :messages [{:role :user :content "Hello"}]
+                   :max-tokens 100}
+          result (anthropic/transform-request-impl :anthropic request {})]
+      (is (nil? (:system result))))))
