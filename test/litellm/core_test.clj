@@ -299,3 +299,82 @@
         (is (some? ch))
         ;; Channel should be readable
         (is (instance? clojure.core.async.impl.channels.ManyToManyChannel ch))))))
+
+;; ============================================================================
+;; Malli normalisation & output validation tests
+;; ============================================================================
+
+(deftest test-normalize-response-format-passthrough
+  (testing "Non-malli request passes through unchanged"
+    (let [request {:model "gpt-4o"
+                   :messages [{:role :user :content "hi"}]
+                   :response-format {:type :json-object}}
+          result (#'core/normalize-response-format request)]
+      (is (= :json-object (get-in result [:response-format :type]))))))
+
+(deftest test-normalize-response-format-malli
+  (testing ":malli type is converted to :json-schema with derived JSON Schema"
+    (let [request {:model "gpt-4o"
+                   :messages [{:role :user :content "hi"}]
+                   :response-format {:type :malli
+                                     :schema [:map [:name :string] [:age :int]]}}
+          result (#'core/normalize-response-format request)]
+      (is (= :json-schema (get-in result [:response-format :type])))
+      (is (= "output" (get-in result [:response-format :json-schema :name])))
+      (let [sch (get-in result [:response-format :json-schema :schema])]
+        (is (= "object" (:type sch)))
+        (is (contains? (:properties sch) :name))))))
+
+(deftest test-apply-output-validation-no-malli
+  (testing "Returns response unchanged when no :malli response-format"
+    (let [response {:choices [{:index 0
+                               :message {:role :assistant :content "{\"x\": 1}"}
+                               :finish-reason :stop}]
+                    :usage {:prompt-tokens 5 :completion-tokens 5 :total-tokens 10}}
+          request  {:model "gpt-4o"
+                    :messages [{:role :user :content "hi"}]
+                    :response-format {:type :json-object}}
+          result (#'core/apply-output-validation response request)]
+      (is (nil? (get-in result [:choices 0 :message :parsed-output]))))))
+
+(deftest test-apply-output-validation-valid-json
+  (testing "Decodes and adds :parsed-output when JSON matches Malli schema"
+    (let [schema   [:map [:name :string] [:age :int]]
+          response {:choices [{:index 0
+                               :message {:role :assistant :content "{\"name\":\"Alice\",\"age\":30}"}
+                               :finish-reason :stop}]
+                    :usage {:prompt-tokens 5 :completion-tokens 5 :total-tokens 10}}
+          request  {:model "gpt-4o"
+                    :messages [{:role :user :content "hi"}]
+                    :response-format {:type :malli :schema schema}}
+          result (#'core/apply-output-validation response request)]
+      (is (= {:name "Alice" :age 30}
+             (get-in result [:choices 0 :message :parsed-output]))))))
+
+(deftest test-apply-output-validation-invalid-json
+  (testing "Throws :validation-error when JSON does not match schema"
+    (let [schema   [:map [:name :string] [:age :int]]
+          response {:choices [{:index 0
+                               :message {:role :assistant :content "{\"name\":123}"}
+                               :finish-reason :stop}]
+                    :usage {:prompt-tokens 5 :completion-tokens 5 :total-tokens 10}}
+          request  {:model "gpt-4o"
+                    :messages [{:role :user :content "hi"}]
+                    :response-format {:type :malli :schema schema}}]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                            #"does not match"
+                            (#'core/apply-output-validation response request))))))
+
+(deftest test-apply-output-validation-disabled
+  (testing ":validate-output false skips validation even with Malli schema"
+    (let [schema   [:map [:name :string]]
+          response {:choices [{:index 0
+                               :message {:role :assistant :content "{\"name\":999}"}
+                               :finish-reason :stop}]
+                    :usage {:prompt-tokens 5 :completion-tokens 5 :total-tokens 10}}
+          request  {:model "gpt-4o"
+                    :messages [{:role :user :content "hi"}]
+                    :response-format {:type :malli :schema schema}
+                    :validate-output false}
+          result (#'core/apply-output-validation response request)]
+      (is (nil? (get-in result [:choices 0 :message :parsed-output]))))))

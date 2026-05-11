@@ -73,7 +73,7 @@
    [:budget-tokens {:optional true} :int]])
 
 ;; Response format (JSON mode / structured output)
-(def ResponseFormatType [:enum :json-object :json-schema :text])
+(def ResponseFormatType [:enum :json-object :json-schema :text :malli])
 
 (def JsonSchema
   [:map
@@ -84,7 +84,8 @@
 (def ResponseFormat
   [:map
    [:type ResponseFormatType]
-   [:json-schema {:optional true} JsonSchema]])
+   [:json-schema {:optional true} JsonSchema]
+   [:schema {:optional true} :any]])
 
 ;; ============================================================================
 ;; Request Schema
@@ -107,7 +108,8 @@
    [:tool-choice {:optional true} ToolChoice]
    [:reasoning-effort {:optional true} ReasoningEffort]
    [:thinking {:optional true} ThinkingConfig]
-   [:response-format {:optional true} ResponseFormat]])
+   [:response-format {:optional true} ResponseFormat]
+   [:validate-output {:optional true} :boolean]])
 
 ;; ============================================================================
 ;; Response Schemas

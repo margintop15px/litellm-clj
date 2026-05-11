@@ -187,3 +187,16 @@
                    :messages [{:role :user :content "Hello"}]}
           result (mistral/transform-request-impl :mistral request {})]
       (is (nil? (:response_format result))))))
+
+(deftest test-transform-request-json-schema-format
+  (testing "transform-request-impl produces json_schema response_format with sub-object"
+    (let [schema {:type "object" :properties {:title {:type "string"}} :required ["title"]}
+          request {:model "mistral-small-latest"
+                   :messages [{:role :user :content "Give me structured JSON"}]
+                   :response-format {:type :json-schema
+                                     :json-schema {:name "book" :schema schema :strict true}}}
+          result (mistral/transform-request-impl :mistral request {})]
+      (is (= "json_schema" (get-in result [:response_format :type])))
+      (is (= "book" (get-in result [:response_format :json_schema :name])))
+      (is (= schema (get-in result [:response_format :json_schema :schema])))
+      (is (true? (get-in result [:response_format :json_schema :strict]))))))
