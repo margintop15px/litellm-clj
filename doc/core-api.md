@@ -241,6 +241,46 @@ Calculate estimated cost.
     {:api-key "sk-..."}))
 ```
 
+### JSON Output & Structured Output
+
+Use `:response-format` to request structured JSON from any provider. The recommended approach is `:malli`, which automatically converts your schema, validates, and decodes the response.
+
+```clojure
+;; Malli schema (recommended) — validates and decodes response automatically
+(def response
+  (core/completion :openai "gpt-4o-mini"
+    {:messages [{:role :user :content "Generate a person record."}]
+     :response-format {:type   :malli
+                       :schema [:map [:name :string] [:age :int] [:city :string]]}}
+    {:api-key "sk-..."}))
+
+;; Decoded Clojure map at :parsed-output (keyword keys, correct types)
+(-> response :choices first :message :parsed-output)
+;; => {:name "Alice", :age 30, :city "Paris"}
+
+;; Raw JSON Schema
+(core/completion :openai "gpt-4o-mini"
+  {:messages [{:role :user :content "Generate a person."}]
+   :response-format {:type :json-schema
+                     :json-schema {:name   "person"
+                                   :schema {:type "object"
+                                            :properties {:name {:type "string"} :age {:type "integer"}}
+                                            :required ["name" "age"]
+                                            :additionalProperties false}
+                                   :strict true}}}
+  {:api-key "sk-..."})
+
+;; Free-form JSON (no schema)
+(core/completion :openai "gpt-4o-mini"
+  {:messages [{:role :user :content "Give me some data as JSON."}]
+   :response-format {:type :json-object}}
+  {:api-key "sk-..."})
+```
+
+Set `:validate-output false` to skip Malli decode/validate and get the raw response instead.
+
+See the [JSON Output guide](json-output.md) for the full provider matrix, nested schemas, and cross-provider examples.
+
 ### Function Calling (OpenAI)
 
 ```clojure
