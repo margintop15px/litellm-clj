@@ -40,6 +40,9 @@
 ;; Malli Output Normalisation & Validation
 ;; ============================================================================
 
+(def ^:private json-decoder
+  (mt/transformer mt/json-transformer))
+
 (defn- normalize-response-format
   "Convert :malli response-format to :json-schema so all providers see only standard types."
   [request]
@@ -64,8 +67,7 @@
       (let [content (-> response :choices first :message :content)]
         (if content
           (let [parsed  (json/decode content true)
-                decoder (mt/transformer mt/json-transformer)
-                decoded (m/decode malli-schema parsed decoder)]
+                decoded (m/decode malli-schema parsed json-decoder)]
             (if (m/validate malli-schema decoded)
               (assoc-in response [:choices 0 :message :parsed-output] decoded)
               (throw (ex-info "Response does not match the provided Malli schema"
