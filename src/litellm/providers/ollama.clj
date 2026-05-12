@@ -214,22 +214,24 @@
     (errors/wrap-http-errors
       "ollama"
       #(let [start-time (System/currentTimeMillis)
-             response (http/post url
-                                 (conj {:headers {"Content-Type" "application/json"
-                                                  "User-Agent" "litellm-clj/1.0.0"}
-                                        :body (json/encode transformed-request)
-                                        :timeout (:timeout config 30000)
-                                        :as :json}
-                                       (when thread-pool
-                                         {:executor thread-pool})))
+             response-future (http/post url
+                                        (conj {:headers {"Content-Type" "application/json"
+                                                         "User-Agent" "litellm-clj/1.0.0"}
+                                               :body (json/encode transformed-request)
+                                               :timeout (:timeout config 30000)
+                                               :async? true
+                                               :as :json}
+                                              (when thread-pool
+                                                {:executor thread-pool})))
+             response @response-future
              duration (- (System/currentTimeMillis) start-time)]
-         
+
          ;; Handle errors if response has error status
          (when (>= (:status response) 400)
            (handle-error-response :ollama response))
-         
+
          ;; Add request type to response for later processing
-         (assoc response :ollama-request-type (if is-chat :chat :generate))))))
+         (future (assoc response :ollama-request-type (if is-chat :chat :generate)))))))
 
 (defn transform-response-impl
   "Ollama-specific transform-response implementation"
