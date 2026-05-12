@@ -290,3 +290,68 @@
       
       (is (= "msg_789" (:id result)))
       (is (= "Let me analyze this..." (get-in result [:choices 0 :delta :reasoning-content]))))))
+
+;; ============================================================================
+;; Response Format / JSON Output Tests
+;; ============================================================================
+
+;; json-object: system prompt injection (Anthropic has no native json_object mode)
+(deftest test-inject-json-object-system-prompt-no-existing
+  (testing "inject-json-object-system-prompt with nil system"
+    (let [result (anthropic/inject-json-object-system-prompt nil)]
+      (is (string? result))
+      (is (.contains result "JSON")))))
+
+(deftest test-inject-json-object-system-prompt-appends
+  (testing "inject-json-object-system-prompt appends to existing system prompt"
+    (let [result (anthropic/inject-json-object-system-prompt "You are helpful.")]
+      (is (.startsWith result "You are helpful."))
+      (is (.contains result "JSON")))))
+
+(deftest test-transform-request-json-object-injects-system
+  (testing "transform-request-impl injects JSON instruction into system for :json-object"
+    (let [request {:model "claude-3-haiku-20240307"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :max-tokens 100
+                   :response-format {:type :json-object}}
+          result (anthropic/transform-request-impl :anthropic request {})]
+      (is (string? (:system result)))
+      (is (.contains (:system result) "JSON"))
+      (is (nil? (:output_config result))))))
+
+;; json-schema: native output_config (no system modification)
+(deftest test-transform-output-config-json-schema
+  (testing "transform-output-config produces correct output_config for :json-schema"
+    (let [schema {:type "object" :properties {:name {:type "string"}} :required ["name"]}
+          rf     {:type :json-schema :json-schema {:name "person" :schema schema}}
+          result (anthropic/transform-output-config rf)]
+      (is (= "json_schema" (get-in result [:format :type])))
+      (is (= schema (get-in result [:format :schema]))))))
+
+(deftest test-transform-output-config-nil-for-json-object
+  (testing "transform-output-config returns nil for :json-object (no native equivalent)"
+    (is (nil? (anthropic/transform-output-config {:type :json-object})))))
+
+(deftest test-transform-request-json-schema-uses-output-config
+  (testing "transform-request-impl uses output_config for :json-schema, not system injection"
+    (let [schema {:type "object" :properties {:age {:type "integer"}} :required ["age"]}
+          request {:model "claude-sonnet-4-5"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :max-tokens 100
+                   :response-format {:type :json-schema
+                                     :json-schema {:name "result" :schema schema}}}
+          result (anthropic/transform-request-impl :anthropic request {})]
+      (is (= "json_schema" (get-in result [:output_config :format :type])))
+      (is (= schema (get-in result [:output_config :format :schema])))
+      ;; system prompt must NOT contain schema injection
+      (is (or (nil? (:system result))
+              (not (.contains (:system result) "json_schema")))))))
+
+(deftest test-transform-request-no-response-format
+  (testing "transform-request-impl without response-format adds no system or output_config"
+    (let [request {:model "claude-3-haiku-20240307"
+                   :messages [{:role :user :content "Hello"}]
+                   :max-tokens 100}
+          result (anthropic/transform-request-impl :anthropic request {})]
+      (is (nil? (:system result)))
+      (is (nil? (:output_config result))))))

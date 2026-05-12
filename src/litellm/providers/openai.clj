@@ -55,6 +55,20 @@
     (map? function-call) function-call
     :else function-call))
 
+(defn transform-response-format
+  "Transform response-format to OpenAI format"
+  [response-format]
+  (when response-format
+    (case (:type response-format)
+      :json-object {:type "json_object"}
+      :text        {:type "text"}
+      :json-schema {:type "json_schema"
+                    :json_schema (let [js (:json-schema response-format)]
+                                   (cond-> {:name (:name js)
+                                            :schema (:schema js)}
+                                     (contains? js :strict) (assoc :strict (:strict js))))}
+      nil)))
+
 ;; ============================================================================
 ;; Response Transformations
 ;; ============================================================================
@@ -174,7 +188,8 @@
       (:functions request) (assoc :functions (transform-functions (:functions request)))
       (:function-call request) (assoc :function_call (transform-function-call (:function-call request)))
       ;; Add reasoning_effort for o1 models (low, medium, high)
-      (:reasoning-effort request) (assoc :reasoning_effort (name (:reasoning-effort request))))))
+      (:reasoning-effort request) (assoc :reasoning_effort (name (:reasoning-effort request)))
+      (:response-format request) (assoc :response_format (transform-response-format (:response-format request))))))
 
 (defn make-request-impl
   "OpenAI-specific make-request implementation"

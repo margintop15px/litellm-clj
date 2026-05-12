@@ -165,7 +165,13 @@
       (:stop request) (assoc :stop (:stop request))
       (contains? request :stream) (assoc :stream (:stream request))
       (:tools request) (assoc :tools (transform-tools (:tools request)))
-      (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request))))))
+      (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request)))
+      (= :json-object (get-in request [:response-format :type])) (assoc :response_format {:type "json_object"})
+      (= :json-schema (get-in request [:response-format :type]))
+        (assoc :response_format {:type "json_schema"
+                                 :json_schema (let [js (get-in request [:response-format :json-schema])]
+                                                (cond-> {:name (:name js) :schema (:schema js)}
+                                                  (contains? js :strict) (assoc :strict (:strict js))))}))))
 
 (defn make-request-impl
   "Azure OpenAI-specific make-request implementation"

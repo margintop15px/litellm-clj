@@ -168,3 +168,35 @@
       (is (= "mistral-small-latest" (:model transformed)))
       ;; Should not have added system message
       (is (= 1 (count (:messages transformed)))))))
+
+;; ============================================================================
+;; Response Format / JSON Output Tests
+;; ============================================================================
+
+(deftest test-transform-request-json-object-format
+  (testing "transform-request-impl includes response_format for :json-object"
+    (let [request {:model "mistral-small-latest"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :response-format {:type :json-object}}
+          result (mistral/transform-request-impl :mistral request {})]
+      (is (= {:type "json_object"} (:response_format result))))))
+
+(deftest test-transform-request-no-response-format
+  (testing "transform-request-impl does not add response_format when absent"
+    (let [request {:model "mistral-small-latest"
+                   :messages [{:role :user :content "Hello"}]}
+          result (mistral/transform-request-impl :mistral request {})]
+      (is (nil? (:response_format result))))))
+
+(deftest test-transform-request-json-schema-format
+  (testing "transform-request-impl produces json_schema response_format with sub-object"
+    (let [schema {:type "object" :properties {:title {:type "string"}} :required ["title"]}
+          request {:model "mistral-small-latest"
+                   :messages [{:role :user :content "Give me structured JSON"}]
+                   :response-format {:type :json-schema
+                                     :json-schema {:name "book" :schema schema :strict true}}}
+          result (mistral/transform-request-impl :mistral request {})]
+      (is (= "json_schema" (get-in result [:response_format :type])))
+      (is (= "book" (get-in result [:response_format :json_schema :name])))
+      (is (= schema (get-in result [:response_format :json_schema :schema])))
+      (is (true? (get-in result [:response_format :json_schema :strict]))))))

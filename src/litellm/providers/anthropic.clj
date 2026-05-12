@@ -219,6 +219,22 @@
     {:type (name (:type thinking-config))
      :budget_tokens (:budget-tokens thinking-config)}))
 
+(defn inject-json-object-system-prompt
+  "Append a JSON-only instruction to the system prompt.
+  Used for :json-object mode, since Anthropic has no native json_object equivalent."
+  [system-prompt]
+  (let [instruction "Always respond with valid JSON only. Do not include any text outside the JSON."]
+    (if system-prompt
+      (str system-prompt "\n\n" instruction)
+      instruction)))
+
+(defn transform-output-config
+  "Build Anthropic output_config for native json_schema structured output."
+  [response-format]
+  (when (= :json-schema (:type response-format))
+    {:format {:type "json_schema"
+              :schema (get-in response-format [:json-schema :schema])}}))
+
 (defn transform-request-impl
   "Anthropic-specific transform-request implementation"
   [provider-name request config]
@@ -237,17 +253,25 @@
                      :max_tokens (:max-tokens request 1024)
                      :stream (:stream request false)}]
     
-    ;; Add system prompt, messages, tools, thinking if present
-    ;; Only add one of temperature or top_p (Anthropic constraint)
-    (cond-> transformed
-      has-temperature? (assoc :temperature (:temperature request))
-      (and has-top-p? (not has-temperature?)) (assoc :top_p (:top-p request))
-      (and (not has-temperature?) (not has-top-p?)) (assoc :temperature 1.0)
-      (:system messages-data) (assoc :system (:system messages-data))
-      (:messages messages-data) (assoc :messages (:messages messages-data))
-      (:tools request) (assoc :tools (transform-tools (:tools request)))
-      (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request)))
-      thinking-param (assoc :thinking thinking-param))))
+    (let [raw-system (:system messages-data)
+          rf         (:response-format request)
+          ;; For :json-object (no native Anthropic equivalent), inject system prompt.
+          ;; For :json-schema, use native output_config — no system modification needed.
+          final-system (if (= :json-object (:type rf))
+                         (inject-json-object-system-prompt raw-system)
+                         raw-system)
+          output-config (transform-output-config rf)]
+      ;; Only add one of temperature or top_p (Anthropic constraint)
+      (cond-> transformed
+        has-temperature? (assoc :temperature (:temperature request))
+        (and has-top-p? (not has-temperature?)) (assoc :top_p (:top-p request))
+        (and (not has-temperature?) (not has-top-p?)) (assoc :temperature 1.0)
+        final-system (assoc :system final-system)
+        (:messages messages-data) (assoc :messages (:messages messages-data))
+        (:tools request) (assoc :tools (transform-tools (:tools request)))
+        (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request)))
+        thinking-param (assoc :thinking thinking-param)
+        output-config (assoc :output_config output-config)))))
 
 (defn make-request-impl
   "Anthropic-specific make-request implementation"

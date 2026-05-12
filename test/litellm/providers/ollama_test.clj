@@ -196,3 +196,41 @@
 (deftest test-supports-streaming
   (testing "Ollama supports streaming"
     (is (true? (ollama/supports-streaming-impl :ollama)))))
+
+;; ============================================================================
+;; Response Format / JSON Output Tests
+;; ============================================================================
+
+(deftest test-transform-request-json-object-format
+  (testing "transform-request-impl sets format to \"json\" for :json-object"
+    (let [request {:model "ollama_chat/llama3"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :response-format {:type :json-object}}
+          result (ollama/transform-request-impl :ollama request {})]
+      (is (= "json" (:format result))))))
+
+(deftest test-transform-request-json-schema-format
+  (testing "transform-request-impl sets format to schema map for :json-schema"
+    (let [schema {:type "object" :properties {:name {:type "string"}}}
+          request {:model "ollama_chat/llama3"
+                   :messages [{:role :user :content "Give me JSON"}]
+                   :response-format {:type :json-schema
+                                     :json-schema {:name "person" :schema schema}}}
+          result (ollama/transform-request-impl :ollama request {})]
+      (is (= schema (:format result))))))
+
+(deftest test-transform-request-no-response-format
+  (testing "transform-request-impl does not add format when response-format absent"
+    (let [request {:model "ollama_chat/llama3"
+                   :messages [{:role :user :content "Hello"}]}
+          result (ollama/transform-request-impl :ollama request {})]
+      (is (nil? (:format result))))))
+
+(deftest test-explicit-format-takes-precedence
+  (testing "Explicit :format key takes precedence over :response-format"
+    (let [request {:model "ollama_chat/llama3"
+                   :messages [{:role :user :content "Hello"}]
+                   :format "json"
+                   :response-format {:type :json-object}}
+          result (ollama/transform-request-impl :ollama request {})]
+      (is (= "json" (:format result))))))

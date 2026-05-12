@@ -10,7 +10,11 @@
             [litellm.providers.ollama]    ; Load to register provider
             [litellm.providers.openrouter] ; Load to register provider
             [litellm.providers.azure]     ; Load to register provider
-            ))
+            [malli.core :as m]
+            [malli.transform :as mt]
+            [malli.error :as me]
+            [malli.json-schema :as json-schema]
+            [cheshire.core :as json]))
 
 ;; ============================================================================
 ;; Provider Discovery
@@ -31,6 +35,46 @@
   [provider-name]
   (providers/provider-status provider-name))
 
+
+;; ============================================================================
+;; Malli Output Normalisation & Validation
+;; ============================================================================
+
+(def ^:private json-decoder
+  (mt/transformer mt/json-transformer))
+
+(defn- normalize-response-format
+  "Convert :malli response-format to :json-schema so all providers see only standard types."
+  [request]
+  (if (= :malli (get-in request [:response-format :type]))
+    (let [malli-schema (get-in request [:response-format :schema])
+          json-sch     (json-schema/transform malli-schema)]
+      (assoc request :response-format {:type        :json-schema
+                                       :json-schema {:name   "output"
+                                                     :schema json-sch}}))
+    request))
+
+(defn- apply-output-validation
+  "Parse, decode, and validate the first choice's JSON content against the Malli schema.
+  Adds :parsed-output to the message map on success. Throws on validation failure.
+  Only runs when the original request had :response-format {:type :malli ...} and
+  :validate-output is not explicitly false."
+  [response original-request]
+  (let [rf            (get-in original-request [:response-format])
+        malli-schema  (get rf :schema)
+        validate?     (get original-request :validate-output true)]
+    (if (and (= :malli (:type rf)) malli-schema validate?)
+      (let [content (-> response :choices first :message :content)]
+        (if content
+          (let [parsed  (json/decode content true)
+                decoded (m/decode malli-schema parsed json-decoder)]
+            (if (m/validate malli-schema decoded)
+              (assoc-in response [:choices 0 :message :parsed-output] decoded)
+              (throw (ex-info "Response does not match the provided Malli schema"
+                              {:type   :validation-error
+                               :errors (me/humanize (m/explain malli-schema decoded))}))))
+          response))
+      response)))
 
 ;; ============================================================================
 ;; Core Completion API
@@ -85,26 +129,28 @@
    
    ;; Build full request with model
    (let [request (assoc request-map :model model)]
-     
+
      ;; Validate request
      (providers/validate-request provider-name request)
-     
-     ;; Check if streaming
-     (if (:stream request)
-       ;; Streaming request - return channel
-       (let [;; Merge API key and other request params into config
-             merged-config (merge config (select-keys request [:api-key :api-base :timeout]))
-             transformed-request (providers/transform-request provider-name request merged-config)]
-         (providers/make-streaming-request provider-name transformed-request nil merged-config))
-       
-       ;; Non-streaming request - use the provider's make-request
-       (let [;; Merge API key and other request params into config
-             merged-config (merge config (select-keys request [:api-key :api-base :timeout]))
-             transformed-request (providers/transform-request provider-name request merged-config)
-             response-future (providers/make-request provider-name transformed-request nil nil merged-config)
-             response @response-future]  ; Block and wait for response
-         ;; Transform response
-         (providers/transform-response provider-name response))))))
+
+     ;; Normalise :malli response-format → :json-schema before provider dispatch
+     (let [normalized (normalize-response-format request)]
+
+       ;; Check if streaming
+       (if (:stream request)
+         ;; Streaming request - return channel (no Malli validation for streaming)
+         (let [merged-config (merge config (select-keys normalized [:api-key :api-base :timeout]))
+               transformed-request (providers/transform-request provider-name normalized merged-config)]
+           (providers/make-streaming-request provider-name transformed-request nil merged-config))
+
+         ;; Non-streaming request
+         (let [merged-config    (merge config (select-keys normalized [:api-key :api-base :timeout]))
+               transformed-request (providers/transform-request provider-name normalized merged-config)
+               response-future  (providers/make-request provider-name transformed-request nil nil merged-config)
+               response         @response-future
+               standard-response (providers/transform-response provider-name response)]
+           ;; Apply Malli validation/decode using original request (holds :malli schema)
+           (apply-output-validation standard-response request)))))))
 
 (defn chat
   "Simple chat completion function for single user messages.

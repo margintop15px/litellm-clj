@@ -139,10 +139,16 @@
                     :stop (:stop request)
                     :stream (:stream request false)}]
     
-    ;; Add function calling if present
+    ;; Add function calling and response format if present
     (cond-> transformed
       (:tools request) (assoc :tools (transform-tools (:tools request)))
-      (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request))))))
+      (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request)))
+      (= :json-object (get-in request [:response-format :type])) (assoc :response_format {:type "json_object"})
+      (= :json-schema (get-in request [:response-format :type]))
+        (assoc :response_format {:type "json_schema"
+                                 :json_schema (let [js (get-in request [:response-format :json-schema])]
+                                                (cond-> {:name (:name js) :schema (:schema js)}
+                                                  (contains? js :strict) (assoc :strict (:strict js))))}))))
 
 (defn make-request-impl
   "OpenRouter-specific make-request implementation"
