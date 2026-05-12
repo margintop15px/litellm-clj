@@ -20,6 +20,7 @@ A Clojure port of the popular [LiteLLM](https://github.com/BerriAI/litellm) libr
   - [Basic Completion](#basic-completion)
   - [Streaming Responses](#streaming-responses)
   - [Function Calling](#function-calling-openai)
+  - [Structured JSON Output](#structured-json-output)
 - [Documentation](#documentation)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -34,6 +35,7 @@ LiteLLM Clojure provides a unified, idiomatic Clojure interface for interacting 
 - Switch between providers without changing your code
 - Streaming support with core.async channels
 - Router API to switch between models in runtime
+- Structured JSON output with Malli schema validation (all providers)
 - Function calling support (Alpha)
 ---
 
@@ -210,10 +212,38 @@ For simple, direct provider calls:
        (println "Arguments:" (get-in tool-call [:function :arguments])))))
 ```
 
+### Structured JSON Output
+
+Get structured data back from any provider using a [Malli](https://github.com/metosin/malli) schema. The library converts the schema to JSON Schema, calls the provider's native structured output API, then decodes and validates the response automatically.
+
+```clojure
+(require '[litellm.core :as llm])
+
+(def person-schema
+  [:map
+   [:name    :string]
+   [:age     :int]
+   [:hobbies [:vector :string]]])
+
+(def response
+  (llm/completion :openai "gpt-4o-mini"
+    {:messages [{:role :user :content "Generate a person record."}]
+     :response-format {:type   :malli
+                       :schema person-schema}}
+    {:api-key (System/getenv "OPENAI_API_KEY")}))
+
+;; Decoded, keyword-keyed Clojure map — types are correct
+(-> response :choices first :message :parsed-output)
+;; => {:name "Alice", :age 30, :hobbies ["reading" "hiking"]}
+```
+
+Works the same way with `:anthropic`, `:gemini`, `:mistral`, `:ollama`, and `:openrouter` — just change the provider keyword and model name. See the [JSON Output guide](doc/json-output.md) for the full provider matrix.
+
 ---
 
 ## Documentation
 - **[API Guide](doc/api-guide.md)** - Comprehensive API reference
+- **[JSON Output Guide](doc/json-output.md)** - Structured output with Malli schemas
 - **[Error Handling](doc/error_handling.md)** - Examples related to error handling
 - **[Streaming Guide](doc/streaming.md)** - Detailed streaming documentation
 - **[Examples](examples/)** - More code examples

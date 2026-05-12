@@ -59,6 +59,27 @@ The Core API provides direct access to providers:
 | Learning LiteLLM | Core API |
 | Testing different providers | Either (Router is easier) |
 
+## Structured JSON Output
+
+Both APIs support structured output via `:response-format`. Pass a Malli schema for automatic conversion, validation, and decoding:
+
+```clojure
+(require '[litellm.core :as llm])
+
+(def response
+  (llm/completion :openai "gpt-4o-mini"
+    {:messages [{:role :user :content "Generate a person record."}]
+     :response-format {:type   :malli
+                       :schema [:map [:name :string] [:age :int] [:city :string]]}}
+    {:api-key (System/getenv "OPENAI_API_KEY")}))
+
+;; Decoded, keyword-keyed Clojure map
+(-> response :choices first :message :parsed-output)
+;; => {:name "Alice", :age 30, :city "Paris"}
+```
+
+The `:malli` format type works identically across all providers — the library converts the schema to JSON Schema and dispatches the correct native API for each provider. See the [JSON Output guide](json-output.md) for the full provider matrix and more examples.
+
 ## Common Workflows
 
 ### Production Setup with Router

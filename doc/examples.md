@@ -85,10 +85,97 @@ A collection of practical examples for common LiteLLM use cases.
 ```
 
 
+## Structured JSON Output
+
+### Malli Schema (Recommended)
+
+```clojure
+(require '[litellm.core :as llm])
+
+(def response
+  (llm/completion :openai "gpt-4o-mini"
+    {:messages [{:role :user :content "Generate a product record."}]
+     :response-format {:type   :malli
+                       :schema [:map
+                                [:name     :string]
+                                [:price    :double]
+                                [:in-stock :boolean]
+                                [:tags     [:vector :string]]]}}
+    {:api-key (System/getenv "OPENAI_API_KEY")}))
+
+;; Keyword keys, correct Clojure types
+(-> response :choices first :message :parsed-output)
+;; => {:name "Widget Pro", :price 29.99, :in-stock true, :tags ["gadget" "new"]}
+```
+
+### Validation Failure Handling
+
+```clojure
+(try
+  (llm/completion :openai "gpt-4o-mini"
+    {:messages [{:role :user :content "Say hello."}]
+     :response-format {:type :malli :schema [:map [:count :int]]}}
+    {:api-key (System/getenv "OPENAI_API_KEY")})
+  (catch clojure.lang.ExceptionInfo e
+    (when (= :validation-error (:type (ex-data e)))
+      (println "Schema mismatch:" (:errors (ex-data e))))))
+```
+
+### Skip Validation
+
+Set `:validate-output false` to receive the raw response without decode/validate:
+
+```clojure
+(llm/completion :openai "gpt-4o-mini"
+  {:messages [{:role :user :content "Give me JSON."}]
+   :response-format {:type :malli :schema [:map [:name :string]]}
+   :validate-output false}
+  {:api-key (System/getenv "OPENAI_API_KEY")})
+;; :parsed-output is absent; :content holds the raw JSON string
+```
+
+### Raw JSON Schema
+
+If you prefer to manage your own schema, pass it directly:
+
+```clojure
+(llm/completion :openai "gpt-4o-mini"
+  {:messages [{:role :user :content "Generate a person."}]
+   :response-format {:type :json-schema
+                     :json-schema {:name   "person"
+                                   :schema {:type "object"
+                                            :properties {:name {:type "string"}
+                                                         :age  {:type "integer"}}
+                                            :required ["name" "age"]
+                                            :additionalProperties false}
+                                   :strict true}}}
+  {:api-key (System/getenv "OPENAI_API_KEY")})
+```
+
+### Cross-Provider
+
+The same `:response-format` map works across all providers:
+
+```clojure
+(def schema [:map [:summary :string] [:sentiment [:enum "positive" "negative" "neutral"]]])
+
+(defn analyze [provider model api-key text]
+  (-> (llm/completion provider model
+        {:messages [{:role :user :content (str "Analyze sentiment: " text)}]
+         :response-format {:type :malli :schema schema}}
+        {:api-key api-key})
+      (get-in [:choices 0 :message :parsed-output])))
+
+(analyze :openai    "gpt-4o-mini"          (System/getenv "OPENAI_API_KEY")    "Great product!")
+(analyze :anthropic "claude-haiku-4-5"     (System/getenv "ANTHROPIC_API_KEY") "Great product!")
+(analyze :mistral   "mistral-small-latest" (System/getenv "MISTRAL_API_KEY")   "Great product!")
+```
+
 ## Next Steps
 
 - Review the [[API Guide|api-guide]] for detailed API documentation
 - Check [[Core API|core-api]] for direct provider access
 - Explore [[Router API|router-api]] for configuration management
 - Learn about [[streaming|streaming]] responses
+- Read about [[JSON Output|json-output]] for the full structured output guide
 - Read about [[error handling|/docs/ERROR_HANDLING.md]]
