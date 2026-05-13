@@ -14,32 +14,32 @@
   (try
     (let [api-key (or (System/getenv "OPENAI_API_KEY")
                       (throw (Exception. "OPENAI_API_KEY not set")))
-          ch (core/completion :openai "gpt-4o-mini"
-               {:messages [{:role :user :content "Count from 1 to 5, one number per line"}]
-                :stream true
-                :max-tokens 50}
-               {:api-key api-key})]
-      
+          ch      (core/completion :openai "gpt-4o-mini"
+                                   {:messages   [{:role :user :content "Count from 1 to 5, one number per line"}]
+                                    :stream     true
+                                    :max-tokens 50}
+                                   {:api-key api-key})]
+
       (print "Response: ")
       (flush)
-      
+
       (go-loop [chunk-count 0]
-        (if-let [chunk (<! ch)]
-          (do
-            (if (streaming/is-error-chunk? chunk)
-              (println "\n❌ Error:" (:message chunk))
-              (when-let [content (streaming/extract-content chunk)]
-                (print content)
-                (flush)))
-            (recur (inc chunk-count)))
-          (do
-            (println)
-            (println "✓ Stream completed. Received" chunk-count "chunks"))))
-      
+               (if-let [chunk (<! ch)]
+                 (do
+                   (if (streaming/is-error-chunk? chunk)
+                     (println "\n❌ Error:" (:message chunk))
+                     (when-let [content (streaming/extract-content chunk)]
+                       (print content)
+                       (flush)))
+                   (recur (inc chunk-count)))
+                 (do
+                   (println)
+                   (println "✓ Stream completed. Received" chunk-count "chunks"))))
+
       ;; Give async operations time to complete
       (Thread/sleep 5000)
       (println "Test 1: ✓ PASSED\n"))
-    
+
     (catch Exception e
       (println "Test 1: ❌ FAILED -" (.getMessage e))
       (println))))
@@ -52,38 +52,38 @@
   (println "Test 2: Callback-Based Streaming")
   (println "----------------------------------------")
   (try
-    (let [api-key (or (System/getenv "OPENAI_API_KEY")
-                      (throw (Exception. "OPENAI_API_KEY not set")))
-          ch (core/completion :openai "gpt-4o-mini"
-               {:messages [{:role :user :content "Say 'Hello World'"}]
-                :stream true
-                :max-tokens 20}
-               {:api-key api-key})
+    (let [api-key         (or (System/getenv "OPENAI_API_KEY")
+                              (throw (Exception. "OPENAI_API_KEY not set")))
+          ch              (core/completion :openai "gpt-4o-mini"
+                                           {:messages   [{:role :user :content "Say 'Hello World'"}]
+                                            :stream     true
+                                            :max-tokens 20}
+                                           {:api-key api-key})
           chunks-received (atom 0)]
-      
+
       (print "Response: ")
       (flush)
-      
+
       (streaming/consume-stream-with-callbacks ch
-        ;; on-chunk
-        (fn [chunk]
-          (swap! chunks-received inc)
-          (when-let [content (streaming/extract-content chunk)]
-            (print content)
-            (flush)))
-        ;; on-complete
-        (fn [response]
-          (println)
-          (println "✓ Callback completed. Total chunks:" @chunks-received)
-          (println "Test 2: ✓ PASSED\n"))
-        ;; on-error
-        (fn [error]
-          (println "\n❌ Error:" (:message error))
-          (println "Test 2: ❌ FAILED\n")))
-      
+                                               ;; on-chunk
+                                               (fn [chunk]
+                                                 (swap! chunks-received inc)
+                                                 (when-let [content (streaming/extract-content chunk)]
+                                                   (print content)
+                                                   (flush)))
+                                               ;; on-complete
+                                               (fn [response]
+                                                 (println)
+                                                 (println "✓ Callback completed. Total chunks:" @chunks-received)
+                                                 (println "Test 2: ✓ PASSED\n"))
+                                               ;; on-error
+                                               (fn [error]
+                                                 (println "\n❌ Error:" (:message error))
+                                                 (println "Test 2: ❌ FAILED\n")))
+
       ;; Give callbacks time to complete
       (Thread/sleep 5000))
-    
+
     (catch Exception e
       (println "Test 2: ❌ FAILED -" (.getMessage e))
       (println))))
@@ -98,12 +98,12 @@
   (try
     (let [api-key (or (System/getenv "OPENAI_API_KEY")
                       (throw (Exception. "OPENAI_API_KEY not set")))
-          ch (core/completion :openai "gpt-4o-mini"
-               {:messages [{:role :user :content "Say 'Testing 123'"}]
-                :stream true
-                :max-tokens 20}
-               {:api-key api-key})]
-      
+          ch      (core/completion :openai "gpt-4o-mini"
+                                   {:messages   [{:role :user :content "Say 'Testing 123'"}]
+                                    :stream     true
+                                    :max-tokens 20}
+                                   {:api-key api-key})]
+
       (println "Collecting stream...")
       (let [result (streaming/collect-stream ch)]
         (if (:error result)
@@ -114,7 +114,7 @@
             (println "Content:" (:content result))
             (println "Total chunks:" (count (:chunks result)))
             (println "Test 3: ✓ PASSED\n")))))
-    
+
     (catch Exception e
       (println "Test 3: ❌ FAILED -" (.getMessage e))
       (println))))
@@ -129,26 +129,26 @@
   (if-let [api-key (System/getenv "ANTHROPIC_API_KEY")]
     (try
       (let [ch (core/completion :anthropic "claude-3-haiku-20240307"
-                 {:messages [{:role :user :content "Say 'Anthropic works'"}]
-                  :stream true
-                  :max-tokens 20}
-                 {:api-key api-key})]
-        
+                                {:messages   [{:role :user :content "Say 'Anthropic works'"}]
+                                 :stream     true
+                                 :max-tokens 20}
+                                {:api-key api-key})]
+
         (print "Response: ")
         (flush)
-        
+
         (go-loop []
-          (if-let [chunk (<! ch)]
-            (do
-              (when-let [content (streaming/extract-content chunk)]
-                (print content)
-                (flush))
-              (recur))
-            (println)))
-        
+                 (if-let [chunk (<! ch)]
+                   (do
+                     (when-let [content (streaming/extract-content chunk)]
+                       (print content)
+                       (flush))
+                     (recur))
+                   (println)))
+
         (Thread/sleep 5000)
         (println "Test 4: ✓ PASSED\n"))
-      
+
       (catch Exception e
         (print e)
         (println "Test 4: ❌ FAILED -" (.getMessage e))
@@ -165,14 +165,14 @@
   (println "Prerequisites:")
   (println "- OPENAI_API_KEY must be set")
   (println "- ANTHROPIC_API_KEY optional for Test 4\n")
-  
+
   (if (System/getenv "OPENAI_API_KEY")
     (do
       (test-openai-streaming)
       (test-callback-streaming)
       (test-blocking-collection)
       (test-anthropic-streaming)
-      
+
       (println "=== All Tests Completed ===")
       (System/exit 0))
     (do
@@ -186,7 +186,7 @@
 
 ;; For REPL usage
 (comment
-  (test-openai-streaming)
-  (test-callback-streaming)
-  (test-blocking-collection)
-  (test-anthropic-streaming))
+ (test-openai-streaming)
+ (test-callback-streaming)
+ (test-blocking-collection)
+ (test-anthropic-streaming))

@@ -22,6 +22,7 @@
     :litellm/authorization-error
     :litellm/provider-not-found
     :litellm/model-not-found
+    :litellm/prompt-not-found
     :litellm/unsupported-feature
     :litellm/quota-exceeded})
 
@@ -54,10 +55,10 @@
 (defn- build-error-data
   "Build standardized error data map"
   [error-type message & {:keys [provider http-status provider-code retry-after
-                                 recoverable? request-id context]
-                          :or {recoverable? false}}]
-  (cond-> {:type error-type
-           :message message
+                                recoverable? request-id context]
+                         :or   {recoverable? false}}]
+  (cond-> {:type         error-type
+           :message      message
            :recoverable? recoverable?}
     provider (assoc :provider provider)
     http-status (assoc :http-status http-status)
@@ -75,56 +76,69 @@
   [message & {:keys [request errors] :as opts}]
   (ex-info message
            (build-error-data :litellm/invalid-request message
-                           :context {:request request :validation-errors errors})))
+                             :context {:request request :validation-errors errors})))
 
 (defn invalid-config
   "Configuration validation failed"
   [message & {:keys [config errors] :as opts}]
   (ex-info message
            (build-error-data :litellm/invalid-config message
-                           :context {:config config :validation-errors errors})))
+                             :context {:config config :validation-errors errors})))
 
 (defn authentication-error
   "API key invalid or missing"
   [provider message & {:keys [http-status provider-code] :as opts}]
   (ex-info message
            (build-error-data :litellm/authentication-error message
-                           :provider provider
-                           :http-status (or http-status 401)
-                           :provider-code provider-code
-                           :recoverable? false)))
+                             :provider provider
+                             :http-status (or http-status 401)
+                             :provider-code provider-code
+                             :recoverable? false)))
 
 (defn authorization-error
   "API key valid but lacks permissions"
   [provider message & {:keys [http-status provider-code resource] :as opts}]
   (ex-info message
            (build-error-data :litellm/authorization-error message
-                           :provider provider
-                           :http-status (or http-status 403)
-                           :provider-code provider-code
-                           :recoverable? false
-                           :context {:resource resource})))
+                             :provider provider
+                             :http-status (or http-status 403)
+                             :provider-code provider-code
+                             :recoverable? false
+                             :context {:resource resource})))
 
 (defn provider-not-found
   "Requested provider doesn't exist"
   [provider & {:keys [available-providers] :as opts}]
   (ex-info (str "Provider not found: " provider)
            (build-error-data :litellm/provider-not-found
-                           (str "Provider not found: " provider)
-                           :provider provider
-                           :context {:available-providers available-providers})))
+                             (str "Provider not found: " provider)
+                             :provider provider
+                             :context {:available-providers available-providers})))
 
 (defn model-not-found
   "Model doesn't exist for provider"
   [provider model & {:keys [http-status provider-code available-models] :as opts}]
   (ex-info (str "Model not found: " model)
            (build-error-data :litellm/model-not-found
-                           (str "Model not found: " model)
-                           :provider provider
-                           :http-status (or http-status 404)
-                           :provider-code provider-code
-                           :context {:model model
-                                    :available-models available-models})))
+                             (str "Model not found: " model)
+                             :provider provider
+                             :http-status (or http-status 404)
+                             :provider-code provider-code
+                             :context {:model            model
+                                       :available-models available-models})))
+
+(defn prompt-not-found
+  "Named prompt (e.g. a Langfuse managed prompt) doesn't exist"
+  [provider prompt-name & {:keys [http-status provider-code version label] :as opts}]
+  (ex-info (str "Prompt not found: " prompt-name)
+           (build-error-data :litellm/prompt-not-found
+                             (str "Prompt not found: " prompt-name)
+                             :provider provider
+                             :http-status (or http-status 404)
+                             :provider-code provider-code
+                             :context {:prompt-name prompt-name
+                                       :version     version
+                                       :label       label})))
 
 (defn unsupported-feature
   "Feature not supported by provider"
@@ -132,20 +146,20 @@
   (let [msg (or message (str "Feature not supported: " feature))]
     (ex-info msg
              (build-error-data :litellm/unsupported-feature msg
-                             :provider provider
-                             :context {:feature feature}))))
+                               :provider provider
+                               :context {:feature feature}))))
 
 (defn quota-exceeded
   "Account quota exhausted"
   [provider message & {:keys [http-status provider-code quota-type reset-at] :as opts}]
   (ex-info message
            (build-error-data :litellm/quota-exceeded message
-                           :provider provider
-                           :http-status (or http-status 429)
-                           :provider-code provider-code
-                           :recoverable? false
-                           :context {:quota-type quota-type
-                                    :reset-at reset-at})))
+                             :provider provider
+                             :http-status (or http-status 429)
+                             :provider-code provider-code
+                             :recoverable? false
+                             :context {:quota-type quota-type
+                                       :reset-at   reset-at})))
 
 ;; ============================================================================
 ;; Provider/Network Error Constructors
@@ -156,54 +170,54 @@
   [provider message & {:keys [http-status provider-code retry-after request-id] :as opts}]
   (ex-info message
            (build-error-data :litellm/rate-limit message
-                           :provider provider
-                           :http-status (or http-status 429)
-                           :provider-code provider-code
-                           :retry-after retry-after
-                           :recoverable? true
-                           :request-id request-id)))
+                             :provider provider
+                             :http-status (or http-status 429)
+                             :provider-code provider-code
+                             :retry-after retry-after
+                             :recoverable? true
+                             :request-id request-id)))
 
 (defn timeout-error
   "Request timeout"
   [provider message & {:keys [timeout-ms request-id] :as opts}]
   (ex-info message
            (build-error-data :litellm/timeout message
-                           :provider provider
-                           :recoverable? true
-                           :request-id request-id
-                           :context {:timeout-ms timeout-ms})))
+                             :provider provider
+                             :recoverable? true
+                             :request-id request-id
+                             :context {:timeout-ms timeout-ms})))
 
 (defn connection-error
   "Network connectivity issues"
   [provider message & {:keys [cause request-id] :as opts}]
   (ex-info message
            (build-error-data :litellm/connection-error message
-                           :provider provider
-                           :recoverable? true
-                           :request-id request-id
-                           :context {:cause (when cause (.getMessage cause))})))
+                             :provider provider
+                             :recoverable? true
+                             :request-id request-id
+                             :context {:cause (when cause (.getMessage cause))})))
 
 (defn server-error
   "Provider's server error (500, 502, 503)"
   [provider message & {:keys [http-status provider-code request-id] :as opts}]
   (ex-info message
            (build-error-data :litellm/server-error message
-                           :provider provider
-                           :http-status http-status
-                           :provider-code provider-code
-                           :recoverable? true
-                           :request-id request-id)))
+                             :provider provider
+                             :http-status http-status
+                             :provider-code provider-code
+                             :recoverable? true
+                             :request-id request-id)))
 
 (defn provider-error
   "Generic provider-side error"
   [provider message & {:keys [http-status provider-code request-id recoverable?] :as opts}]
   (ex-info message
            (build-error-data :litellm/provider-error message
-                           :provider provider
-                           :http-status http-status
-                           :provider-code provider-code
-                           :recoverable? (boolean recoverable?)
-                           :request-id request-id)))
+                             :provider provider
+                             :http-status http-status
+                             :provider-code provider-code
+                             :recoverable? (boolean recoverable?)
+                             :request-id request-id)))
 
 ;; ============================================================================
 ;; Response Error Constructors
@@ -214,29 +228,29 @@
   [provider message & {:keys [response validation-errors] :as opts}]
   (ex-info message
            (build-error-data :litellm/invalid-response message
-                           :provider provider
-                           :context {:response response
-                                    :validation-errors validation-errors})))
+                             :provider provider
+                             :context {:response          response
+                                       :validation-errors validation-errors})))
 
 (defn streaming-error
   "Error during streaming operation"
   [provider message & {:keys [recoverable? chunk-number cause] :as opts}]
   (ex-info message
            (build-error-data :litellm/streaming-error message
-                           :provider provider
-                           :recoverable? (boolean recoverable?)
-                           :context {:chunk-number chunk-number
-                                    :cause (when cause (.getMessage cause))})))
+                             :provider provider
+                             :recoverable? (boolean recoverable?)
+                             :context {:chunk-number chunk-number
+                                       :cause        (when cause (.getMessage cause))})))
 
 (defn content-filter
   "Content filtered by provider safety systems"
   [provider message & {:keys [provider-code filter-type] :as opts}]
   (ex-info message
            (build-error-data :litellm/content-filter message
-                           :provider provider
-                           :provider-code provider-code
-                           :recoverable? false
-                           :context {:filter-type filter-type})))
+                             :provider provider
+                             :provider-code provider-code
+                             :recoverable? false
+                             :context {:filter-type filter-type})))
 
 ;; ============================================================================
 ;; System Error Constructors
@@ -247,18 +261,18 @@
   [message & {:keys [cause stack-trace] :as opts}]
   (ex-info message
            (build-error-data :litellm/internal-error message
-                           :context {:cause (when cause (.getMessage cause))
-                                    :stack-trace stack-trace})))
+                             :context {:cause       (when cause (.getMessage cause))
+                                       :stack-trace stack-trace})))
 
 (defn resource-exhausted
   "Thread pool or channel buffer full"
   [message & {:keys [resource-type current-usage limit] :as opts}]
   (ex-info message
            (build-error-data :litellm/resource-exhausted message
-                           :recoverable? true
-                           :context {:resource-type resource-type
-                                    :current-usage current-usage
-                                    :limit limit})))
+                             :recoverable? true
+                             :context {:resource-type resource-type
+                                       :current-usage current-usage
+                                       :limit         limit})))
 
 ;; ============================================================================
 ;; Error Predicates
@@ -349,20 +363,20 @@
       ;; Rate limit with retry-after header
       (and (rate-limit-error? ex) (:retry-after data))
       (* 1000 (:retry-after data))
-      
+
       ;; Rate limit without retry-after - exponential backoff
       (rate-limit-error? ex)
       (* 1000 (Math/pow 2 retry-count))
-      
+
       ;; Server errors - exponential backoff with jitter
       (error-type? ex :litellm/server-error)
       (+ (* 1000 (Math/pow 2 retry-count))
          (rand-int 1000))
-      
+
       ;; Connection/timeout - linear backoff
       (or (timeout-error? ex) (error-type? ex :litellm/connection-error))
       (* 1000 (inc retry-count))
-      
+
       ;; Default
       :else 1000)))
 
@@ -400,16 +414,16 @@
   [ex]
   (when (litellm-error? ex)
     (let [data (ex-data ex)]
-      {:error-type (:type data)
-       :category (get-error-category ex)
-       :message (:message data)
-       :provider (:provider data)
-       :http-status (:http-status data)
+      {:error-type    (:type data)
+       :category      (get-error-category ex)
+       :message       (:message data)
+       :provider      (:provider data)
+       :http-status   (:http-status data)
        :provider-code (:provider-code data)
-       :recoverable? (:recoverable? data)
-       :retry-after (:retry-after data)
-       :request-id (:request-id data)
-       :context (:context data)})))
+       :recoverable?  (:recoverable? data)
+       :retry-after   (:retry-after data)
+       :request-id    (:request-id data)
+       :context       (:context data)})))
 
 ;; ============================================================================
 ;; Streaming Error Helpers
@@ -417,19 +431,19 @@
 
 (defn streaming-error-chunk
   "Create an error chunk for placing on streaming channels"
-  [provider message & {:keys [error-type http-status provider-code 
+  [provider message & {:keys [error-type http-status provider-code
                               recoverable? chunk-number cause]
-                       :or {error-type :litellm/streaming-error
-                            recoverable? false}}]
-  {:type :error
-   :error-type error-type
-   :provider provider
-   :message message
-   :http-status http-status
+                       :or   {error-type   :litellm/streaming-error
+                              recoverable? false}}]
+  {:type          :error
+   :error-type    error-type
+   :provider      provider
+   :message       message
+   :http-status   http-status
    :provider-code provider-code
-   :recoverable? recoverable?
-   :chunk-number chunk-number
-   :cause (when cause (.getMessage cause))})
+   :recoverable?  recoverable?
+   :chunk-number  chunk-number
+   :cause         (when cause (.getMessage cause))})
 
 (defn error-chunk?
   "Check if a streaming chunk is an error chunk"
@@ -451,23 +465,23 @@
 (defn http-status->error
   "Map HTTP status code to appropriate error constructor"
   [status provider message & {:keys [provider-code retry-after request-id body]
-                              :as opts}]
+                              :as   opts}]
   (case status
     400 (invalid-request message :context {:http-status status :body body})
     401 (authentication-error provider message :http-status status :provider-code provider-code)
     403 (authorization-error provider message :http-status status :provider-code provider-code)
-    404 (model-not-found provider (or (:model body) "unknown") 
-                        :http-status status :provider-code provider-code)
+    404 (model-not-found provider (or (:model body) "unknown")
+                         :http-status status :provider-code provider-code)
     429 (if (and body (str/includes? (str body) "quota"))
           (quota-exceeded provider message :http-status status :provider-code provider-code)
-          (rate-limit provider message :http-status status :provider-code provider-code 
-                     :retry-after retry-after :request-id request-id))
+          (rate-limit provider message :http-status status :provider-code provider-code
+                      :retry-after retry-after :request-id request-id))
     408 (timeout-error provider message :request-id request-id)
-    (500 502 503 504) (server-error provider message :http-status status 
+    (500 502 503 504) (server-error provider message :http-status status
                                     :provider-code provider-code :request-id request-id)
     ;; Default to provider error
-    (provider-error provider message :http-status status :provider-code provider-code 
-                   :request-id request-id :recoverable? (>= status 500))))
+    (provider-error provider message :http-status status :provider-code provider-code
+                    :request-id request-id :recoverable? (>= status 500))))
 
 ;; ============================================================================
 ;; HTTP Error Wrapping
@@ -481,29 +495,29 @@
     (f)
     (catch java.net.SocketTimeoutException e
       (throw (timeout-error
-               provider-name
-               (or (.getMessage e) "Request timeout")
-               :cause e)))
+              provider-name
+              (or (.getMessage e) "Request timeout")
+              :cause e)))
     (catch java.net.ConnectException e
       (throw (connection-error
-               provider-name
-               (or (.getMessage e) "Connection refused")
-               :cause e)))
+              provider-name
+              (or (.getMessage e) "Connection refused")
+              :cause e)))
     (catch java.net.UnknownHostException e
       (throw (connection-error
-               provider-name
-               (str "Unknown host: " (.getMessage e))
-               :cause e)))
+              provider-name
+              (str "Unknown host: " (.getMessage e))
+              :cause e)))
     (catch java.io.IOException e
       (throw (connection-error
-               provider-name
-               (or (.getMessage e) "I/O error")
-               :cause e)))
+              provider-name
+              (or (.getMessage e) "I/O error")
+              :cause e)))
     (catch javax.net.ssl.SSLException e
       (throw (connection-error
-               provider-name
-               (str "SSL error: " (.getMessage e))
-               :cause e)))
+              provider-name
+              (str "SSL error: " (.getMessage e))
+              :cause e)))
     (catch java.util.concurrent.ExecutionException e
       ;; Re-throw if already a litellm error
       (if (litellm-error? e)
@@ -512,33 +526,33 @@
         (let [data (-> e ex-cause ex-data)]
           (if-let [status (:status data)]
             ;; HTTP error from hato - extract response details
-            (let [headers (:headers data)
-                  body-str (:body data)
+            (let [headers       (:headers data)
+                  body-str      (:body data)
                   ;; Try to parse body as JSON
-                  body (if (string? body-str)
-                         (try
-                           (json/parse-string body-str true)
-                           (catch Exception _
-                             body-str))
-                         body-str)
-                  request-id (get headers "x-request-id")
-                  error-info (if (map? body) (get body :error {}) {})
-                  message (or (:message error-info) 
-                             (.getMessage e)
-                             (str "HTTP " status))
+                  body          (if (string? body-str)
+                                  (try
+                                    (json/parse-string body-str true)
+                                    (catch Exception _
+                                      body-str))
+                                  body-str)
+                  request-id    (get headers "x-request-id")
+                  error-info    (if (map? body) (get body :error {}) {})
+                  message       (or (:message error-info)
+                                    (.getMessage e)
+                                    (str "HTTP " status))
                   provider-code (or (:code error-info) (:type error-info))]
-              (throw (http-status->error 
-                       status 
-                       provider-name 
-                       message
-                       :provider-code provider-code
-                       :request-id request-id
-                       :body body)))
+              (throw (http-status->error
+                      status
+                      provider-name
+                      message
+                      :provider-code provider-code
+                      :request-id request-id
+                      :body body)))
             ;; Not an HTTP error - wrap as provider error
             (throw (provider-error
-                     provider-name
-                     (or (.getMessage e) "HTTP error")
-                     :cause e))))))
+                    provider-name
+                    (or (.getMessage e) "HTTP error")
+                    :cause e))))))
     (catch Exception e
       (throw (provider-error
               provider-name

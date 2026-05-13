@@ -1,6 +1,6 @@
 (ns litellm.config
   "Configuration registry for provider/model switching"
-  (:require [clojure.tools.logging :as log]))
+  (:require [com.brunobonacci.mulog :as mu]))
 
 ;; ============================================================================
 ;; Configuration Registry
@@ -30,16 +30,16 @@
   [config-name config-map]
   (when-not (keyword? config-name)
     (throw (ex-info "Config name must be a keyword" {:config-name config-name})))
-  
+
   (swap! config-registry assoc config-name config-map)
-  (log/info "Registered configuration" {:config-name config-name})
+  (mu/log ::registered :litellm/kind :lib :config-name config-name)
   config-name)
 
 (defn unregister!
   "Remove a configuration from the registry"
   [config-name]
   (swap! config-registry dissoc config-name)
-  (log/info "Unregistered configuration" {:config-name config-name})
+  (mu/log ::unregistered :litellm/kind :lib :config-name config-name)
   nil)
 
 (defn get-config
@@ -72,27 +72,27 @@
   [config-name request]
   (let [config (get-config config-name)]
     (when-not config
-      (throw (ex-info "Configuration not found" 
-                      {:config-name config-name 
-                       :available (list-configs)})))
-    
+      (throw (ex-info "Configuration not found"
+                      {:config-name config-name
+                       :available   (list-configs)})))
+
     (if-let [router (:router config)]
       ;; Config has a router function
-      (let [routed (router request)
-            provider (:provider routed)
-            model (:model routed)
+      (let [routed          (router request)
+            provider        (:provider routed)
+            model           (:model routed)
             ;; Get provider-specific config from :configs map or use :config
             provider-config (if-let [configs (:configs config)]
-                             (get configs provider)
-                             (:config config))]
+                              (get configs provider)
+                              (:config config))]
         {:provider provider
-         :model model
-         :config provider-config})
-      
+         :model    model
+         :config   provider-config})
+
       ;; Simple static config
       {:provider (:provider config)
-       :model (:model config)
-       :config (:config config)})))
+       :model    (:model config)
+       :config   (:config config)})))
 
 ;; ============================================================================
 ;; Configuration Helpers
@@ -103,23 +103,23 @@
   [config-map]
   (cond
     ;; Must have either provider or router
-    (and (not (:provider config-map)) 
+    (and (not (:provider config-map))
          (not (:router config-map)))
-    (throw (ex-info "Config must have :provider or :router" 
+    (throw (ex-info "Config must have :provider or :router"
                     {:config config-map}))
-    
+
     ;; If has provider, must have model
-    (and (:provider config-map) 
+    (and (:provider config-map)
          (not (:model config-map)))
-    (throw (ex-info "Config with :provider must have :model" 
+    (throw (ex-info "Config with :provider must have :model"
                     {:config config-map}))
-    
+
     ;; If has router, router must be a function
-    (and (:router config-map) 
+    (and (:router config-map)
          (not (fn? (:router config-map))))
-    (throw (ex-info ":router must be a function" 
+    (throw (ex-info ":router must be a function"
                     {:config config-map}))
-    
+
     :else true))
 
 (defn register-with-validation!

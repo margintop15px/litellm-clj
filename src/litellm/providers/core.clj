@@ -1,7 +1,7 @@
 (ns litellm.providers.core
   "Core provider protocol and utilities for LiteLLM"
   (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as mu]
             [litellm.schemas :as schemas]
             [litellm.errors :as errors]
             [litellm.providers.openai :as openai]
@@ -213,7 +213,7 @@
 
 (defmethod get-rate-limits :default [_]
   {:requests-per-minute 1000
-   :tokens-per-minute 50000})
+   :tokens-per-minute   50000})
 
 (defmethod get-rate-limits :openai [provider-name]
   (openai/get-rate-limits-impl provider-name))
@@ -425,7 +425,7 @@
     (let [parts (str/split model #"/")]
       (keyword (if (> (count parts) 1)
                  (first parts)
-                 "openai"))) ; Default to openai for bare model names
+                 "openai")))  ; Default to openai for bare model names
     (keyword (str model))))
 
 (defn extract-model-name
@@ -442,7 +442,7 @@
   "Parse model string into provider (keyword) and model components"
   [model]
   {:provider (extract-provider-name model)
-   :model (extract-model-name model)
+   :model    (extract-model-name model)
    :original model})
 
 ;; ============================================================================
@@ -453,7 +453,7 @@
   "Transform messages to OpenAI format"
   [messages]
   (map (fn [msg]
-         {:role (name (:role msg))
+         {:role    (name (:role msg))
           :content (:content msg)})
        messages))
 
@@ -461,7 +461,7 @@
   "Transform messages from OpenAI format"
   [messages]
   (map (fn [msg]
-         {:role (keyword (:role msg))
+         {:role    (keyword (:role msg))
           :content (:content msg)})
        messages))
 
@@ -470,10 +470,10 @@
   [tools]
   (when tools
     (map (fn [tool]
-           {:type (:tool-type tool "function")
-            :function {:name (:function-name (:function tool))
+           {:type     (:tool-type tool "function")
+            :function {:name        (:function-name (:function tool))
                        :description (:function-description (:function tool))
-                       :parameters (:function-parameters (:function tool))}})
+                       :parameters  (:function-parameters (:function tool))}})
          tools)))
 
 ;; ============================================================================
@@ -483,18 +483,18 @@
 (defn create-standard-response
   "Create a standard response format"
   [id model choices usage & {:keys [object created]}]
-  {:id (or id (str "chatcmpl-" (java.util.UUID/randomUUID)))
-   :object (or object "chat.completion")
+  {:id      (or id (str "chatcmpl-" (java.util.UUID/randomUUID)))
+   :object  (or object "chat.completion")
    :created (or created (quot (System/currentTimeMillis) 1000))
-   :model model
+   :model   model
    :choices choices
-   :usage usage})
+   :usage   usage})
 
 (defn create-standard-choice
   "Create a standard choice format"
   [index message finish-reason]
-  {:index index
-   :message message
+  {:index         index
+   :message       message
    :finish-reason finish-reason})
 
 (defn create-standard-message
@@ -507,9 +507,9 @@
 (defn create-standard-usage
   "Create a standard usage format"
   [prompt-tokens completion-tokens]
-  {:prompt-tokens prompt-tokens
+  {:prompt-tokens     prompt-tokens
    :completion-tokens completion-tokens
-   :total-tokens (+ (or prompt-tokens 0) (or completion-tokens 0))})
+   :total-tokens      (+ (or prompt-tokens 0) (or completion-tokens 0))})
 
 ;; ============================================================================
 ;; Error Handling (Legacy - kept for backward compatibility)
@@ -577,10 +577,10 @@
 (defn default-provider-config
   "Get default configuration for a provider"
   [provider-name]
-  {:provider provider-name
-   :timeout 30000
+  {:provider    provider-name
+   :timeout     30000
    :max-retries 3
-   :rate-limit 1000})
+   :rate-limit  1000})
 
 (defn merge-provider-config
   "Merge user config with provider defaults"
@@ -619,9 +619,9 @@
   "Estimate token count for a request"
   [request]
   (let [message-tokens (reduce + 0 (map #(estimate-tokens (:content %)) (:messages request)))
-        system-tokens (if-let [system-msg (first (filter #(= :system (:role %)) (:messages request)))]
-                        (estimate-tokens (:content system-msg))
-                        0)]
+        system-tokens  (if-let [system-msg (first (filter #(= :system (:role %)) (:messages request)))]
+                         (estimate-tokens (:content system-msg))
+                         0)]
     (+ message-tokens system-tokens)))
 
 (defn calculate-cost
@@ -632,7 +632,7 @@
       (+ (* prompt-tokens (:input cost-per-token 0))
          (* completion-tokens (:output cost-per-token 0))))
     (catch Exception e
-      (log/warn "Error calculating cost" {:provider provider-name :model model :error (.getMessage e)})
+      (mu/log ::cost-calculation-error :litellm/kind :lib :provider provider-name :model model :error (.getMessage e))
       0.0)))
 
 ;; ============================================================================
@@ -642,15 +642,15 @@
 (defn provider-status
   "Get comprehensive provider status"
   [provider-name]
-  {:name provider-name
-   :supports-streaming (supports-streaming? provider-name)
+  {:name                      provider-name
+   :supports-streaming        (supports-streaming? provider-name)
    :supports-function-calling (supports-function-calling? provider-name)
-   :rate-limits (get-rate-limits provider-name)})
+   :rate-limits               (get-rate-limits provider-name)})
 
 (defn log-provider-status
   "Log provider status for debugging"
   [provider-name]
-  (log/info "Provider status" (provider-status provider-name)))
+  (mu/log ::status :litellm/kind :lib :status (provider-status provider-name)))
 
 ;; ============================================================================
 ;; Provider Testing Utilities
@@ -659,22 +659,22 @@
 (defn test-provider
   "Test provider with a simple request"
   [provider-name thread-pool telemetry config]
-  (let [test-request {:model "test"
-                      :messages [{:role :user :content "Hello"}]
+  (let [test-request {:model      "test"
+                      :messages   [{:role :user :content "Hello"}]
                       :max-tokens 1}]
     (try
       (validate-request provider-name test-request)
-      (let [transformed (transform-request provider-name test-request config)
-            response-future (make-request provider-name transformed thread-pool telemetry config)
-            response @response-future
+      (let [transformed       (transform-request provider-name test-request config)
+            response-future   (make-request provider-name transformed thread-pool telemetry config)
+            response          @response-future
             standard-response (transform-response provider-name response)]
-        {:success true
+        {:success  true
          :provider provider-name
          :response standard-response})
       (catch Exception e
-        {:success false
+        {:success  false
          :provider provider-name
-         :error (.getMessage e)}))))
+         :error    (.getMessage e)}))))
 
 ;; ============================================================================
 ;; Provider Comparison Utilities
@@ -685,9 +685,9 @@
   [provider-names]
   (map (fn [provider-name]
          (assoc (provider-status provider-name)
-                :health-check-available (try
-                                          (some? (health-check provider-name nil nil))
-                                          (catch Exception _ false))))
+           :health-check-available (try
+                                     (some? (health-check provider-name nil nil))
+                                     (catch Exception _ false))))
        provider-names))
 
 (defn find-providers-for-model

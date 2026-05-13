@@ -20,16 +20,16 @@
   "Basic example of streaming responses"
   []
   (println "=== Basic Streaming Example ===\n")
-  
+
   ;; Register a config if not already set up
   (when-not (seq (router/list-configs))
     (setup!))
-  
+
   ;; Create a streaming request using router
   (let [ch (router/completion :openai
                               {:messages [{:role :user :content "Count to 5 slowly"}]
-                               :stream true})]
-    
+                               :stream   true})]
+
     ;; Consume the channel
     (go-loop []
       (when-let [chunk (<! ch)]
@@ -39,7 +39,7 @@
             (print content)
             (flush)))
         (recur)))
-    
+
     (println "\n\nDone!")))
 
 ;; ============================================================================
@@ -50,19 +50,19 @@
   "Example that accumulates the full response"
   []
   (println "=== Accumulating Streaming Example ===\n")
-  
+
   (when-not (seq (router/list-configs))
     (setup!))
-  
+
   (let [ch (router/completion :openai
                               {:messages [{:role :user :content "Write a haiku about Clojure"}]
-                               :stream true})]
-    
+                               :stream   true})]
+
     (go-loop [accumulated ""]
       (if-let [chunk (<! ch)]
         (if (streaming/is-error-chunk? chunk)
           (println "Error:" (:message chunk))
-          (let [content (streaming/extract-content chunk)
+          (let [content         (streaming/extract-content chunk)
                 new-accumulated (str accumulated content)]
             (print content)
             (flush)
@@ -80,20 +80,20 @@
   "Example showing multiple concurrent streams"
   []
   (println "=== Multiple Concurrent Streams ===\n")
-  
+
   (when-not (seq (router/list-configs))
     (setup!))
-  
+
   (let [questions ["What is Clojure?"
                    "What are monads?"
                    "Explain functional programming"]
-        channels (map (fn [q]
-                       (router/completion :openai
-                                          {:messages [{:role :user :content q}]
-                                           :stream true
-                                           :max-tokens 50}))
-                     questions)]
-    
+        channels  (map (fn [q]
+                         (router/completion :openai
+                                           {:messages   [{:role :user :content q}]
+                                         :stream     true
+                                         :max-tokens 50}))
+                       questions)]
+
     ;; Process each stream
     (doseq [[i ch] (map-indexed vector channels)]
       (println "\nStream" (inc i) ":")
@@ -114,17 +114,17 @@
   "Example demonstrating error handling in streams"
   []
   (println "=== Error Handling Example ===\n")
-  
+
   ;; Register with invalid key to demonstrate error handling
   (router/register! :invalid
-    {:provider :openai
-     :model "gpt-4"
-     :config {:api-key "invalid-key"}})
-  
+                    {:provider :openai
+                     :model    "gpt-4"
+                     :config   {:api-key "invalid-key"}})
+
   (let [ch (router/completion :invalid
                               {:messages [{:role :user :content "Hello"}]
-                               :stream true})]  ; Will cause error
-    
+                               :stream   true})] ; Will cause error
+
     (go-loop []
       (when-let [chunk (<! ch)]
         (if (streaming/is-error-chunk? chunk)
@@ -146,14 +146,14 @@
   "Example using core.async to filter content"
   []
   (println "=== Stream Filtering Example ===\n")
-  
+
   (when-not (seq (router/list-configs))
     (setup!))
-  
+
   (let [source (router/completion :openai
                                   {:messages [{:role :user :content "Generate numbers: 1, 2, 3, 4, 5"}]
-                                   :stream true})]
-    
+                                   :stream   true})]
+
     ;; Filter and process chunks using core.async
     (go-loop []
       (when-let [chunk (<! source)]
@@ -168,13 +168,13 @@
 ;; ============================================================================
 
 (comment
-  ;; First, set up the router (reads from environment variables)
-  (setup!)
-  
-  ;; Run individual examples:
-  (basic-streaming-example)
-  (accumulating-example)
-  (multiple-streams-example)
-  (error-handling-example)
-  (filtering-example)
-)
+ ;; First, set up the router (reads from environment variables)
+ (setup!)
+
+ ;; Run individual examples:
+ (basic-streaming-example)
+ (accumulating-example)
+ (multiple-streams-example)
+ (error-handling-example)
+ (filtering-example))
+

@@ -2,7 +2,7 @@
   "Core streaming utilities for LiteLLM"
   (:require [clojure.core.async :as async :refer [chan close! go-loop <! >!]]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as mu]
             [litellm.errors :as errors]))
 
 ;; ============================================================================
@@ -24,7 +24,7 @@
     (try
       (close! ch)
       (catch Exception e
-        (log/warn "Error closing stream" {:error (.getMessage e)})))))
+        (mu/log ::close-error :litellm/kind :lib :error (.getMessage e))))))
 
 ;; ============================================================================
 ;; Error Handling
@@ -38,12 +38,12 @@
   This is a convenience wrapper around litellm.errors/streaming-error-chunk."
   [provider message & {:keys [status code data error-type recoverable?]}]
   (errors/streaming-error-chunk
-    provider
-    message
-    :error-type (or error-type :litellm/streaming-error)
-    :http-status status
-    :provider-code code
-    :recoverable? recoverable?))
+   provider
+   message
+   :error-type (or error-type :litellm/streaming-error)
+   :http-status status
+   :provider-code code
+   :recoverable? recoverable?))
 
 (defn is-error-chunk?
   "Check if a chunk is an error chunk."
@@ -87,8 +87,8 @@
         (println \"Content:\" (:content result))))"
   [source-ch]
   (let [result (atom {:content ""
-                      :chunks []
-                      :error nil})]
+                      :chunks  []
+                      :error   nil})]
     (loop []
       (when-let [chunk (async/<!! source-ch)]
         (swap! result update :chunks conj chunk)
@@ -120,7 +120,7 @@
           (do
             (>! output-ch chunk)
             (close-stream! output-ch))
-          (let [content (extract-content chunk)
+          (let [content         (extract-content chunk)
                 new-accumulated (str accumulated content)]
             (when content
               (>! output-ch new-accumulated))
@@ -163,21 +163,21 @@
         (do
           (when on-chunk
             (on-chunk chunk))
-          (let [content (extract-content chunk)
+          (let [content     (extract-content chunk)
                 new-content (str accumulated-content content)]
             (recur (conj chunks chunk) new-content))))
       ;; Channel closed, stream complete
       (when on-complete
-        (let [last-chunk (last chunks)
-              final-response {:id (get last-chunk :id)
-                             :object "chat.completion"
-                             :created (get last-chunk :created)
-                             :model (get last-chunk :model)
-                             :choices [{:index 0
-                                       :message {:role :assistant
-                                                :content accumulated-content}
-                                       :finish-reason (extract-finish-reason last-chunk)}]
-                             :usage nil}]
+        (let [last-chunk     (last chunks)
+              final-response {:id            (get last-chunk :id)
+                              :object        "chat.completion"
+                              :created       (get last-chunk :created)
+                              :model         (get last-chunk :model)
+                              :choices       [{:index         0
+                                               :message       {:role    :assistant
+                                                               :content accumulated-content}
+                                               :finish-reason (extract-finish-reason last-chunk)}]
+                              :usage         nil}]
           (on-complete final-response))))))
 
 ;; ============================================================================
@@ -199,5 +199,5 @@
         (try
           (json-decoder data true)
           (catch Exception e
-            (log/debug "Failed to parse SSE line" {:line line :error (.getMessage e)})
+            (mu/log ::sse-parse-error :litellm/kind :lib :line line :error (.getMessage e))
             nil))))))

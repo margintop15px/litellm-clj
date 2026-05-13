@@ -1,15 +1,16 @@
 (ns litellm.core
   "Core API for LiteLLM - Direct provider calls with model names as-is"
-  (:require [clojure.tools.logging :as log]
+  (:require [com.brunobonacci.mulog :as mu]
             [litellm.errors :as errors]
+            [litellm.observability :as observability]
             [litellm.providers.core :as providers]
-            [litellm.providers.openai]    ; Load to register provider
+            [litellm.providers.openai] ; Load to register provider
             [litellm.providers.anthropic] ; Load to register provider
-            [litellm.providers.gemini]    ; Load to register provider
-            [litellm.providers.mistral]   ; Load to register provider
-            [litellm.providers.ollama]    ; Load to register provider
+            [litellm.providers.gemini] ; Load to register provider
+            [litellm.providers.mistral] ; Load to register provider
+            [litellm.providers.ollama] ; Load to register provider
             [litellm.providers.openrouter] ; Load to register provider
-            [litellm.providers.azure]     ; Load to register provider
+            [litellm.providers.azure] ; Load to register provider
             [malli.core :as m]
             [malli.transform :as mt]
             [malli.error :as me]
@@ -60,9 +61,9 @@
   Only runs when the original request had :response-format {:type :malli ...} and
   :validate-output is not explicitly false."
   [response original-request]
-  (let [rf            (get-in original-request [:response-format])
-        malli-schema  (get rf :schema)
-        validate?     (get original-request :validate-output true)]
+  (let [rf           (get-in original-request [:response-format])
+        malli-schema (get rf :schema)
+        validate?    (get original-request :validate-output true)]
     (if (and (= :malli (:type rf)) malli-schema validate?)
       (let [content (-> response :choices first :message :content)]
         (if content
@@ -119,14 +120,14 @@
   **See also:** [[chat]], [[extract-content]], [[extract-message]]"
   ([provider-name model request-map]
    (completion provider-name model request-map {}))
-  
+
   ([provider-name model request-map config]
    ;; Validate provider exists
    (when-not (provider-available? provider-name)
-     (throw (errors/provider-not-found 
-              (name provider-name)
-              :available-providers (list-providers))))
-   
+     (throw (errors/provider-not-found
+             (name provider-name)
+             :available-providers (list-providers))))
+
    ;; Build full request with model
    (let [request (assoc request-map :model model)]
 
@@ -139,18 +140,20 @@
        ;; Check if streaming
        (if (:stream request)
          ;; Streaming request - return channel (no Malli validation for streaming)
-         (let [merged-config (merge config (select-keys normalized [:api-key :api-base :timeout]))
+         (let [merged-config       (merge config (select-keys normalized [:api-key :api-base :timeout]))
                transformed-request (providers/transform-request provider-name normalized merged-config)]
            (providers/make-streaming-request provider-name transformed-request nil merged-config))
 
-         ;; Non-streaming request
-         (let [merged-config    (merge config (select-keys normalized [:api-key :api-base :timeout]))
-               transformed-request (providers/transform-request provider-name normalized merged-config)
-               response-future  (providers/make-request provider-name transformed-request nil nil merged-config)
-               response         @response-future
-               standard-response (providers/transform-response provider-name response)]
-           ;; Apply Malli validation/decode using original request (holds :malli schema)
-           (apply-output-validation standard-response request)))))))
+         ;; Non-streaming request — wrapped in an observability span
+         (let [merged-config       (merge config (select-keys normalized [:api-key :api-base :timeout]))
+               transformed-request (providers/transform-request provider-name normalized merged-config)]
+           (observability/instrument-completion
+            provider-name model normalized
+            (fn []
+              (let [response          @(providers/make-request provider-name transformed-request nil nil merged-config)
+                    standard-response (providers/transform-response provider-name response)]
+                (apply-output-validation standard-response request)))
+            (observability/options))))))))
 
 (defn chat
   "Simple chat completion function for single user messages.
@@ -182,7 +185,7 @@
                    [{:role :system :content system-prompt}
                     {:role :user :content message}]
                    [{:role :user :content message}])
-        request {:messages messages}]
+        request  {:messages messages}]
     (completion provider-name model request (dissoc config :system-prompt))))
 
 ;; ============================================================================
@@ -228,27 +231,28 @@
   **See also:** [[openai-embedding]], [[mistral-embedding]], [[gemini-embedding]]"
   ([provider-name model request-map]
    (embedding provider-name model request-map {}))
-  
+
   ([provider-name model request-map config]
    ;; Validate provider exists
    (when-not (provider-available? provider-name)
-     (throw (errors/provider-not-found 
-              (name provider-name)
-              :available-providers (list-providers))))
-   
+     (throw (errors/provider-not-found
+             (name provider-name)
+             :available-providers (list-providers))))
+
    ;; Build full request with model
    (let [request (assoc request-map :model model)]
-     
+
      ;; Validate embedding request
      (providers/validate-embedding-request provider-name request)
-     
+
      ;; Merge API key and other request params into config
-     (let [merged-config (merge config (select-keys request [:api-key :api-base :timeout]))
-           transformed-request (providers/transform-embedding-request provider-name request merged-config)
-           response-future (providers/make-embedding-request provider-name transformed-request nil nil merged-config)
-           response @response-future]  ; Block and wait for response
-       ;; Transform response
-       (providers/transform-embedding-response provider-name response)))))
+     (let [merged-config       (merge config (select-keys request [:api-key :api-base :timeout]))
+           transformed-request (providers/transform-embedding-request provider-name request merged-config)]
+       (observability/instrument-embedding
+        provider-name model request
+        (fn []
+          (let [response @(providers/make-embedding-request provider-name transformed-request nil nil merged-config)]
+            (providers/transform-embedding-response provider-name response))))))))
 
 ;; ============================================================================
 ;; Provider-Specific Convenience Functions
@@ -403,20 +407,22 @@
     (f)
     (catch clojure.lang.ExceptionInfo e
       (if (errors/litellm-error? e)
-        (let [category (errors/get-error-category e)]
-          (case category
-            :provider-error (log/warn "Provider error" (errors/error-summary e))
-            :client-error (log/error "Client error" (errors/error-summary e))
-            :response-error (log/error "Response error" (errors/error-summary e))
-            :system-error (log/error "System error" (errors/error-summary e))
-            (log/error "Unknown error category" (errors/error-summary e)))
+        (let [category (errors/get-error-category e)
+              summary  (errors/error-summary e)]
+          (mu/log ::error
+            :litellm/kind :lib
+            :error-category category
+            :error-summary summary)
           (throw e))
-        ;; Non-litellm error
         (do
-          (log/error "Unexpected error" e)
+          (mu/log ::unexpected-error
+            :litellm/kind :lib
+            :error (ex-message e))
           (throw e))))
     (catch Exception e
-      (log/error "Unexpected error" e)
+      (mu/log ::unexpected-error
+        :litellm/kind :lib
+        :error (ex-message e))
       (throw e))))
 
 

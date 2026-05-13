@@ -1,22 +1,22 @@
 #kaocha/v1
-{:tests [{:id :unit
-          :test-paths ["test"]
-          :source-paths ["src"]
-          :ns-patterns [".*-test$"]
-          :skip-meta [:integration :e2e]}
-         
-         {:id :e2e
-          :test-paths ["test/e2e"]
-          :source-paths ["src"]
-          :ns-patterns [".*-test$"]
-          :focus-meta [:e2e]}]
- 
- :plugins [:kaocha.plugin/profiling]
- 
- :reporter [kaocha.report/dots]
- 
- :color? true
- :randomize? false
- :fail-fast? false
- 
+{:tests           [{:id           :unit
+                    :test-paths   ["test"]
+                    :source-paths ["src"]
+                    :ns-patterns  [".*-test$"]
+                    :skip-meta    [:integration :e2e]}
+
+                   {:id           :e2e
+                    :test-paths   ["test/e2e"]
+                    :source-paths ["src"]
+                    :ns-patterns  [".*-test$"]
+                    :focus-meta   [:e2e]}]
+
+ :plugins         [:kaocha.plugin/profiling]
+
+ :reporter        [kaocha.report/dots]
+
+ :color?          true
+ :randomize?      false
+ :fail-fast?      false
+
  :capture-output? true}

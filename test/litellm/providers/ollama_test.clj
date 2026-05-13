@@ -8,25 +8,25 @@
 
 (deftest test-transform-tools
   (testing "Transform tools to Ollama format"
-    (let [tools [{:type "function"
-                  :function {:name "get_weather"
-                             :description "Get the weather for a location"
-                             :parameters {:type "object"
-                                          :properties {:location {:type "string"}}
-                                          :required ["location"]}}}]
+    (let [tools  [{:type     "function"
+                   :function {:name        "get_weather"
+                              :description "Get the weather for a location"
+                              :parameters  {:type       "object"
+                                            :properties {:location {:type "string"}}
+                                            :required   ["location"]}}}]
           result (ollama/transform-tools tools)]
       (is (= 1 (count result)))
       (is (= "function" (:type (first result))))
       (is (= "get_weather" (get-in result [0 :function :name])))
       (is (= "Get the weather for a location" (get-in result [0 :function :description])))
-      (is (= {:type "object"
+      (is (= {:type       "object"
               :properties {:location {:type "string"}}
-              :required ["location"]}
+              :required   ["location"]}
              (get-in result [0 :function :parameters])))))
 
   (testing "Transform tools with default type"
-    (let [tools [{:function {:name "my_tool"
-                             :description "A tool"}}]
+    (let [tools  [{:function {:name        "my_tool"
+                              :description "A tool"}}]
           result (ollama/transform-tools tools)]
       (is (= "function" (:type (first result))))))
 
@@ -48,11 +48,11 @@
 
 (deftest test-transform-tool-calls
   (testing "Transform Ollama tool calls to standard format"
-    (let [tool-calls [{:id "call_123"
-                       :type "function"
-                       :function {:name "get_weather"
+    (let [tool-calls [{:id       "call_123"
+                       :type     "function"
+                       :function {:name      "get_weather"
                                   :arguments "{\"location\":\"San Francisco\"}"}}]
-          result (ollama/transform-tool-calls tool-calls)]
+          result     (ollama/transform-tool-calls tool-calls)]
       (is (= 1 (count result)))
       (is (= "call_123" (:id (first result))))
       (is (= "function" (:type (first result))))
@@ -60,10 +60,10 @@
       (is (= "{\"location\":\"San Francisco\"}" (get-in result [0 :function :arguments])))))
 
   (testing "Transform tool calls with default type"
-    (let [tool-calls [{:id "call_456"
-                       :function {:name "my_tool"
+    (let [tool-calls [{:id       "call_456"
+                       :function {:name      "my_tool"
                                   :arguments "{}"}}]
-          result (ollama/transform-tool-calls tool-calls)]
+          result     (ollama/transform-tool-calls tool-calls)]
       (is (= "function" (:type (first result))))))
 
   (testing "Transform nil tool calls returns nil"
@@ -77,7 +77,7 @@
   (testing "Transform basic messages"
     (let [messages [{:role :user :content "Hello"}
                     {:role :assistant :content "Hi there!"}]
-          result (ollama/transform-messages-for-chat messages)]
+          result   (ollama/transform-messages-for-chat messages)]
       (is (= 2 (count result)))
       (is (= "user" (:role (first result))))
       (is (= "Hello" (:content (first result))))
@@ -85,23 +85,23 @@
       (is (= "Hi there!" (:content (second result))))))
 
   (testing "Transform tool response message"
-    (let [messages [{:role :tool
-                     :content "{\"temperature\": 72}"
+    (let [messages [{:role         :tool
+                     :content      "{\"temperature\": 72}"
                      :tool-call-id "call_123"}]
-          result (ollama/transform-messages-for-chat messages)]
+          result   (ollama/transform-messages-for-chat messages)]
       (is (= 1 (count result)))
       (is (= "tool" (:role (first result))))
       (is (= "{\"temperature\": 72}" (:content (first result))))
       (is (= "call_123" (:tool_call_id (first result))))))
 
   (testing "Transform assistant message with tool calls"
-    (let [messages [{:role :assistant
-                     :content nil
-                     :tool-calls [{:id "call_123"
-                                   :type "function"
-                                   :function {:name "get_weather"
+    (let [messages [{:role       :assistant
+                     :content    nil
+                     :tool-calls [{:id       "call_123"
+                                   :type     "function"
+                                   :function {:name      "get_weather"
                                               :arguments "{\"location\":\"NYC\"}"}}]}]
-          result (ollama/transform-messages-for-chat messages)]
+          result   (ollama/transform-messages-for-chat messages)]
       (is (= 1 (count result)))
       (is (= "assistant" (:role (first result))))
       (is (= 1 (count (:tool_calls (first result)))))
@@ -114,13 +114,13 @@
 
 (deftest test-transform-request-with-tools
   (testing "Request with tools uses chat API"
-    (let [request {:model "llama3"
+    (let [request {:model    "llama3"
                    :messages [{:role :user :content "What's the weather?"}]
-                   :tools [{:type "function"
-                            :function {:name "get_weather"
-                                       :description "Get weather"
-                                       :parameters {:type "object"}}}]}
-          result (ollama/transform-request-impl :ollama request {})]
+                   :tools    [{:type     "function"
+                               :function {:name        "get_weather"
+                                          :description "Get weather"
+                                          :parameters  {:type "object"}}}]}
+          result  (ollama/transform-request-impl :ollama request {})]
       ;; Should have :messages (chat API) not :prompt (generate API)
       (is (contains? result :messages))
       (is (not (contains? result :prompt)))
@@ -128,24 +128,24 @@
       (is (= "get_weather" (get-in result [:tools 0 :function :name])))))
 
   (testing "Request with tool-choice uses chat API"
-    (let [request {:model "llama3"
-                   :messages [{:role :user :content "What's the weather?"}]
+    (let [request {:model       "llama3"
+                   :messages    [{:role :user :content "What's the weather?"}]
                    :tool-choice :auto}
-          result (ollama/transform-request-impl :ollama request {})]
+          result  (ollama/transform-request-impl :ollama request {})]
       (is (contains? result :messages))
       (is (= "auto" (:tool_choice result)))))
 
   (testing "Request without tools uses generate API by default"
-    (let [request {:model "llama3"
+    (let [request {:model    "llama3"
                    :messages [{:role :user :content "Hello"}]}
-          result (ollama/transform-request-impl :ollama request {})]
+          result  (ollama/transform-request-impl :ollama request {})]
       (is (contains? result :prompt))
       (is (not (contains? result :messages)))))
 
   (testing "Request with ollama_chat prefix uses chat API"
-    (let [request {:model "ollama_chat/llama3"
+    (let [request {:model    "ollama_chat/llama3"
                    :messages [{:role :user :content "Hello"}]}
-          result (ollama/transform-request-impl :ollama request {})]
+          result  (ollama/transform-request-impl :ollama request {})]
       (is (contains? result :messages))
       (is (= "llama3" (:model result))))))
 
@@ -155,12 +155,12 @@
 
 (deftest test-transform-chat-response
   (testing "Transform response without tool calls"
-    (let [response {:body {:message {:role "assistant"
-                                     :content "The weather is sunny!"}
-                           :model "llama3"
+    (let [response {:body {:message           {:role    "assistant"
+                                               :content "The weather is sunny!"}
+                           :model             "llama3"
                            :prompt_eval_count 10
-                           :eval_count 20}}
-          result (ollama/transform-chat-response response)]
+                           :eval_count        20}}
+          result   (ollama/transform-chat-response response)]
       (is (= "chat.completion" (:object result)))
       (is (= "llama3" (:model result)))
       (is (= :assistant (get-in result [:choices 0 :message :role])))
@@ -169,16 +169,16 @@
       (is (nil? (get-in result [:choices 0 :message :tool-calls])))))
 
   (testing "Transform response with tool calls"
-    (let [response {:body {:message {:role "assistant"
-                                     :content nil
-                                     :tool_calls [{:id "call_abc123"
-                                                   :type "function"
-                                                   :function {:name "get_weather"
-                                                              :arguments "{\"location\":\"Boston\"}"}}]}
-                           :model "llama3"
+    (let [response {:body {:message           {:role       "assistant"
+                                               :content    nil
+                                               :tool_calls [{:id       "call_abc123"
+                                                             :type     "function"
+                                                             :function {:name      "get_weather"
+                                                                        :arguments "{\"location\":\"Boston\"}"}}]}
+                           :model             "llama3"
                            :prompt_eval_count 10
-                           :eval_count 5}}
-          result (ollama/transform-chat-response response)]
+                           :eval_count        5}}
+          result   (ollama/transform-chat-response response)]
       (is (= :tool_calls (get-in result [:choices 0 :finish-reason])))
       (is (= 1 (count (get-in result [:choices 0 :message :tool-calls]))))
       (is (= "call_abc123" (get-in result [:choices 0 :message :tool-calls 0 :id])))
@@ -203,34 +203,34 @@
 
 (deftest test-transform-request-json-object-format
   (testing "transform-request-impl sets format to \"json\" for :json-object"
-    (let [request {:model "ollama_chat/llama3"
-                   :messages [{:role :user :content "Give me JSON"}]
+    (let [request {:model           "ollama_chat/llama3"
+                   :messages        [{:role :user :content "Give me JSON"}]
                    :response-format {:type :json-object}}
-          result (ollama/transform-request-impl :ollama request {})]
+          result  (ollama/transform-request-impl :ollama request {})]
       (is (= "json" (:format result))))))
 
 (deftest test-transform-request-json-schema-format
   (testing "transform-request-impl sets format to schema map for :json-schema"
-    (let [schema {:type "object" :properties {:name {:type "string"}}}
-          request {:model "ollama_chat/llama3"
-                   :messages [{:role :user :content "Give me JSON"}]
-                   :response-format {:type :json-schema
+    (let [schema  {:type "object" :properties {:name {:type "string"}}}
+          request {:model           "ollama_chat/llama3"
+                   :messages        [{:role :user :content "Give me JSON"}]
+                   :response-format {:type        :json-schema
                                      :json-schema {:name "person" :schema schema}}}
-          result (ollama/transform-request-impl :ollama request {})]
+          result  (ollama/transform-request-impl :ollama request {})]
       (is (= schema (:format result))))))
 
 (deftest test-transform-request-no-response-format
   (testing "transform-request-impl does not add format when response-format absent"
-    (let [request {:model "ollama_chat/llama3"
+    (let [request {:model    "ollama_chat/llama3"
                    :messages [{:role :user :content "Hello"}]}
-          result (ollama/transform-request-impl :ollama request {})]
+          result  (ollama/transform-request-impl :ollama request {})]
       (is (nil? (:format result))))))
 
 (deftest test-explicit-format-takes-precedence
   (testing "Explicit :format key takes precedence over :response-format"
-    (let [request {:model "ollama_chat/llama3"
-                   :messages [{:role :user :content "Hello"}]
-                   :format "json"
+    (let [request {:model           "ollama_chat/llama3"
+                   :messages        [{:role :user :content "Hello"}]
+                   :format          "json"
                    :response-format {:type :json-object}}
-          result (ollama/transform-request-impl :ollama request {})]
+          result  (ollama/transform-request-impl :ollama request {})]
       (is (= "json" (:format result))))))

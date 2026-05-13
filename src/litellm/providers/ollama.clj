@@ -3,7 +3,7 @@
   (:require [litellm.errors :as errors]
             [hato.client :as http]
             [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as mu]
             [clojure.string :as str]))
 
 ;; ============================================================================
@@ -15,7 +15,7 @@
   [tools]
   (when tools
     (mapv (fn [tool]
-            {:type (or (:type tool) "function")
+            {:type     (or (:type tool) "function")
              :function (select-keys (:function tool) [:name :description :parameters])})
           tools)))
 
@@ -32,9 +32,9 @@
   [tool-calls]
   (when tool-calls
     (mapv (fn [tool-call]
-            {:id (:id tool-call)
-             :type (or (:type tool-call) "function")
-             :function {:name (get-in tool-call [:function :name])
+            {:id       (:id tool-call)
+             :type     (or (:type tool-call) "function")
+             :function {:name      (get-in tool-call [:function :name])
                         :arguments (get-in tool-call [:function :arguments])}})
           tool-calls)))
 
@@ -56,9 +56,9 @@
               ;; Tool calls from assistant
               (:tool-calls msg) (assoc :tool_calls
                                        (mapv (fn [tc]
-                                               {:id (:id tc)
-                                                :type (or (:type tc) "function")
-                                                :function {:name (get-in tc [:function :name])
+                                               {:id       (:id tc)
+                                                :type     (or (:type tc) "function")
+                                                :function {:name      (get-in tc [:function :name])
                                                            :arguments (get-in tc [:function :arguments])}})
                                              (:tool-calls msg))))))
         messages))
@@ -79,40 +79,40 @@
 (defn transform-chat-response
   "Transform Ollama chat response to standard format"
   [response]
-  (let [body (:body response)
-        message (get-in body [:message])
-        tool-calls (:tool_calls message)
+  (let [body           (:body response)
+        message        (get-in body [:message])
+        tool-calls     (:tool_calls message)
         has-tool-calls (seq tool-calls)]
-    {:id (str "ollama-" (java.util.UUID/randomUUID))
-     :object "chat.completion"
+    {:id      (str "ollama-" (java.util.UUID/randomUUID))
+     :object  "chat.completion"
      :created (quot (System/currentTimeMillis) 1000)
-     :model (get body :model)
-     :choices [{:index 0
-                :message (cond-> {:role :assistant
-                                  :content (:content message)}
-                           has-tool-calls (assoc :tool-calls (transform-tool-calls tool-calls)))
+     :model   (get body :model)
+     :choices [{:index         0
+                :message       (cond-> {:role    :assistant
+                                        :content (:content message)}
+                                 has-tool-calls (assoc :tool-calls (transform-tool-calls tool-calls)))
                 :finish-reason (if has-tool-calls :tool_calls :stop)}]
-     :usage {:prompt-tokens (get-in body [:prompt_eval_count] 0)
-             :completion-tokens (get-in body [:eval_count] 0)
-             :total-tokens (+ (get-in body [:prompt_eval_count] 0)
-                             (get-in body [:eval_count] 0))}}))
+     :usage   {:prompt-tokens     (get-in body [:prompt_eval_count] 0)
+               :completion-tokens (get-in body [:eval_count] 0)
+               :total-tokens      (+ (get-in body [:prompt_eval_count] 0)
+                                     (get-in body [:eval_count] 0))}}))
 
 (defn transform-generate-response
   "Transform Ollama generate response to standard format"
   [response]
   (let [body (:body response)]
-    {:id (str "ollama-" (java.util.UUID/randomUUID))
-     :object "chat.completion"
+    {:id      (str "ollama-" (java.util.UUID/randomUUID))
+     :object  "chat.completion"
      :created (quot (System/currentTimeMillis) 1000)
-     :model (get body :model)
-     :choices [{:index 0
-                :message {:role :assistant
-                          :content (:response body)}
+     :model   (get body :model)
+     :choices [{:index         0
+                :message       {:role    :assistant
+                                :content (:response body)}
                 :finish-reason :stop}]
-     :usage {:prompt-tokens (get body :prompt_eval_count 0)
-             :completion-tokens (get body :eval_count 0)
-             :total-tokens (+ (get body :prompt_eval_count 0)
-                             (get body :eval_count 0))}}))
+     :usage   {:prompt-tokens     (get body :prompt_eval_count 0)
+               :completion-tokens (get body :eval_count 0)
+               :total-tokens      (+ (get body :prompt_eval_count 0)
+                                     (get body :eval_count 0))}}))
 
 ;; ============================================================================
 ;; Error Handling
@@ -121,17 +121,17 @@
 (defn handle-error-response
   "Handle Ollama API error responses"
   [provider response]
-  (let [status (:status response)
-        body (:body response)
-        message (or (:error body) "Unknown error")
+  (let [status     (:status response)
+        body       (:body response)
+        message    (or (:error body) "Unknown error")
         request-id (get-in response [:headers "x-request-id"])]
-    
-    (throw (errors/http-status->error 
-             status 
-             "ollama" 
-             message
-             :request-id request-id
-             :body body))))
+
+    (throw (errors/http-status->error
+            status
+            "ollama"
+            message
+            :request-id request-id
+            :body body))))
 
 ;; ============================================================================
 ;; Model and Cost Configuration
@@ -140,24 +140,24 @@
 (def default-cost-map
   "Default cost per token for Ollama models (in USD)
    Note: These are approximate and may vary as Ollama is typically run locally"
-  {"llama2" {:input 0.0 :output 0.0}
-   "llama2-uncensored" {:input 0.0 :output 0.0}
-   "llama2-13b" {:input 0.0 :output 0.0}
-   "llama2-70b" {:input 0.0 :output 0.0}
-   "llama2-7b" {:input 0.0 :output 0.0}
-   "llama3" {:input 0.0 :output 0.0}
-   "mistral" {:input 0.0 :output 0.0}
-   "mistral-7b-instruct-v0.1" {:input 0.0 :output 0.0}
-   "mistral-7b-instruct-v0.2" {:input 0.0 :output 0.0}
-   "mixtral-8x7b-instruct-v0.1" {:input 0.0 :output 0.0}
+  {"llama2"                      {:input 0.0 :output 0.0}
+   "llama2-uncensored"           {:input 0.0 :output 0.0}
+   "llama2-13b"                  {:input 0.0 :output 0.0}
+   "llama2-70b"                  {:input 0.0 :output 0.0}
+   "llama2-7b"                   {:input 0.0 :output 0.0}
+   "llama3"                      {:input 0.0 :output 0.0}
+   "mistral"                     {:input 0.0 :output 0.0}
+   "mistral-7b-instruct-v0.1"    {:input 0.0 :output 0.0}
+   "mistral-7b-instruct-v0.2"    {:input 0.0 :output 0.0}
+   "mixtral-8x7b-instruct-v0.1"  {:input 0.0 :output 0.0}
    "mixtral-8x22b-instruct-v0.1" {:input 0.0 :output 0.0}
-   "codellama" {:input 0.0 :output 0.0}
-   "orca-mini" {:input 0.0 :output 0.0}
-   "vicuna" {:input 0.0 :output 0.0}
-   "nous-hermes" {:input 0.0 :output 0.0}
-   "nous-hermes-13b" {:input 0.0 :output 0.0}
-   "wizard-vicuna-uncensored" {:input 0.0 :output 0.0}
-   "llava" {:input 0.0 :output 0.0}})
+   "codellama"                   {:input 0.0 :output 0.0}
+   "orca-mini"                   {:input 0.0 :output 0.0}
+   "vicuna"                      {:input 0.0 :output 0.0}
+   "nous-hermes"                 {:input 0.0 :output 0.0}
+   "nous-hermes-13b"             {:input 0.0 :output 0.0}
+   "wizard-vicuna-uncensored"    {:input 0.0 :output 0.0}
+   "llava"                       {:input 0.0 :output 0.0}})
 
 ;; ============================================================================
 ;; Ollama Provider Implementation Functions
@@ -178,66 +178,66 @@
   [provider-name request config]
   (let [original-model (:model request)
         ;; Use chat API if explicitly requested OR if tools are present (tools require chat API)
-        has-tools (or (:tools request) (:tool-choice request))
-        is-chat (or (str/starts-with? original-model "ollama_chat/") has-tools)
-        model (extract-model-name original-model)
-        actual-model (if (str/starts-with? original-model "ollama_chat/")
-                       (subs original-model (count "ollama_chat/"))
-                       model)
-        messages (:messages request)]
+        has-tools      (or (:tools request) (:tool-choice request))
+        is-chat        (or (str/starts-with? original-model "ollama_chat/") has-tools)
+        model          (extract-model-name original-model)
+        actual-model   (if (str/starts-with? original-model "ollama_chat/")
+                         (subs original-model (count "ollama_chat/"))
+                         model)
+        messages       (:messages request)]
 
-    (let [ollama-format (case (get-in request [:response-format :type])
-                          :json-object "json"
-                          :json-schema (get-in request [:response-format :json-schema :schema])
-                          nil)
+    (let [ollama-format   (case (get-in request [:response-format :type])
+                            :json-object "json"
+                            :json-schema (get-in request [:response-format :json-schema :schema])
+                            nil)
           ;; Prefer explicit :format key, fall back to derived ollama-format
           resolved-format (or (:format request) ollama-format)]
       (if is-chat
         ;; Chat API format (supports tools)
-        (cond-> {:model actual-model
+        (cond-> {:model    actual-model
                  :messages (transform-messages-for-chat messages)
-                 :stream (:stream request false)}
+                 :stream   (:stream request false)}
           resolved-format (assoc :format resolved-format)
           (:tools request) (assoc :tools (transform-tools (:tools request)))
           (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request))))
 
         ;; Generate API format (no tool support)
-        (cond-> {:model actual-model
-                 :prompt (transform-messages-for-generate messages)
-                 :stream (:stream request false)
+        (cond-> {:model   actual-model
+                 :prompt  (transform-messages-for-generate messages)
+                 :stream  (:stream request false)
                  :options {:num_predict (or (:max-tokens request) 128)
-                          :temperature (or (:temperature request) 0.7)
-                          :top_p (or (:top-p request) 1.0)}}
+                           :temperature (or (:temperature request) 0.7)
+                           :top_p       (or (:top-p request) 1.0)}}
           resolved-format (assoc :format resolved-format))))))
 
 (defn make-request-impl
   "Ollama-specific make-request implementation"
   [provider-name transformed-request thread-pool telemetry config]
-  (let [model (:model transformed-request)
+  (let [model   (:model transformed-request)
         is-chat (contains? transformed-request :messages)
-        url (str (:api-base config "http://localhost:11434") (if is-chat "/api/chat" "/api/generate"))]
-    
+        url     (str (:api-base config "http://localhost:11434") (if is-chat "/api/chat" "/api/generate"))]
+
     (errors/wrap-http-errors
-      "ollama"
-      #(let [start-time (System/currentTimeMillis)
-             response-future (http/post url
-                                        (conj {:headers {"Content-Type" "application/json"
-                                                         "User-Agent" "litellm-clj/1.0.0"}
-                                               :body (json/encode transformed-request)
-                                               :timeout (:timeout config 30000)
-                                               :async? true
-                                               :as :json}
-                                              (when thread-pool
-                                                {:executor thread-pool})))
-             response @response-future
-             duration (- (System/currentTimeMillis) start-time)]
+     "ollama"
+     #(let [start-time      (System/currentTimeMillis)
+            response-future (http/post url
+                                       (conj {:headers {"Content-Type" "application/json"
+                                                        "User-Agent"   "litellm-clj/1.0.0"}
+                                              :body    (json/encode transformed-request)
+                                              :timeout (:timeout config 30000)
+                                              :async?  true
+                                              :as      :json}
+                                             (when thread-pool
+                                               {:executor thread-pool})))
+            response        @response-future
+            duration        (- (System/currentTimeMillis) start-time)]
 
-         ;; Handle errors if response has error status
-         (when (>= (:status response) 400)
-           (handle-error-response :ollama response))
+        ;; Handle errors if response has error status
+        (when (>= (:status response) 400)
+          (handle-error-response :ollama response))
 
-         ;; Add request type to response for later processing
-         (future (assoc response :ollama-request-type (if is-chat :chat :generate)))))))
+        ;; Add request type to response for later processing
+        (future (assoc response :ollama-request-type (if is-chat :chat :generate)))))))
 
 (defn transform-response-impl
   "Ollama-specific transform-response implementation"
@@ -264,19 +264,19 @@
   "Ollama-specific get-rate-limits implementation"
   [provider-name]
   {:requests-per-minute 60
-   :tokens-per-minute 100000})
+   :tokens-per-minute   100000})
 
 (defn health-check-impl
   "Ollama-specific health-check implementation"
   [provider-name thread-pool config]
   (try
     (let [response (http/get (str (:api-base config "http://localhost:11434") "/api/tags")
-                            (conj {:timeout 5000}
-                                  (when thread-pool
-                                    {:executor thread-pool})))]
+                             (conj {:timeout 5000}
+                                   (when thread-pool
+                                     {:executor thread-pool})))]
       (= 200 (:status response)))
     (catch Exception e
-      (log/warn "Ollama health check failed" {:error (.getMessage e)})
+      (mu/log ::health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -294,38 +294,38 @@
   (case request-type
     :chat
     (let [message (get-in chunk [:message])]
-      {:id (str "ollama-" (java.util.UUID/randomUUID))
-       :object "chat.completion.chunk"
+      {:id      (str "ollama-" (java.util.UUID/randomUUID))
+       :object  "chat.completion.chunk"
        :created (quot (System/currentTimeMillis) 1000)
-       :model (get chunk :model)
-       :choices [{:index 0
-                  :delta {:role :assistant
-                         :content (:content message)}
+       :model   (get chunk :model)
+       :choices [{:index         0
+                  :delta         {:role    :assistant
+                                  :content (:content message)}
                   :finish-reason (when (:done chunk) :stop)}]})
-    
+
     :generate
-    {:id (str "ollama-" (java.util.UUID/randomUUID))
-     :object "chat.completion.chunk"
+    {:id      (str "ollama-" (java.util.UUID/randomUUID))
+     :object  "chat.completion.chunk"
      :created (quot (System/currentTimeMillis) 1000)
-     :model (get chunk :model)
-     :choices [{:index 0
-                :delta {:role :assistant
-                       :content (:response chunk)}
+     :model   (get chunk :model)
+     :choices [{:index         0
+                :delta         {:role    :assistant
+                                :content (:response chunk)}
                 :finish-reason (when (:done chunk) :stop)}]}))
 
 (defn handle-streaming-response
   "Handle streaming response from Ollama"
   [response callback]
-  (let [body (:body response)
+  (let [body         (:body response)
         request-type (:ollama-request-type response)]
     (doseq [line (str/split-lines body)]
       (when-not (str/blank? line)
         (try
-          (let [chunk (json/decode line true)
+          (let [chunk       (json/decode line true)
                 transformed (parse-streaming-chunk chunk request-type)]
             (callback transformed))
           (catch Exception e
-            (log/debug "Failed to parse streaming chunk" {:line line :error (.getMessage e)})))))))
+            (mu/log ::stream-parse-error :litellm/kind :lib :error (.getMessage e))))))))
 
 ;; ============================================================================
 ;; Utility Functions
@@ -336,12 +336,12 @@
   [provider]
   (try
     (let [response (http/get (str (:api-base provider) "/api/tags")
-                            {:as :json})]
+                             {:as :json})]
       (if (= 200 (:status response))
         (map :name (get-in response [:body :models]))
         (throw (ex-info "Failed to list models" {:status (:status response)}))))
     (catch Exception e
-      (log/error "Error listing Ollama models" e)
+      (mu/log ::list-models-error :litellm/kind :lib :error (ex-message e))
       [])))
 
 ;; ============================================================================
@@ -351,21 +351,21 @@
 (defn test-ollama-connection
   "Test Ollama connection with a simple request"
   [provider thread-pool telemetry]
-  (let [test-request {:model "llama2"
-                     :messages [{:role :user :content "Hello"}]
-                     :max-tokens 5}]
+  (let [test-request {:model      "llama2"
+                      :messages   [{:role :user :content "Hello"}]
+                      :max-tokens 5}]
     (try
-      (let [transformed (transform-request-impl :ollama test-request provider)
-            response-future (make-request-impl :ollama transformed thread-pool telemetry provider)
-            response @response-future
+      (let [transformed       (transform-request-impl :ollama test-request provider)
+            response-future   (make-request-impl :ollama transformed thread-pool telemetry provider)
+            response          @response-future
             standard-response (transform-response-impl :ollama response)]
-        {:success true
-         :provider "ollama"
-         :model "llama2"
+        {:success     true
+         :provider    "ollama"
+         :model       "llama2"
          :response-id (:id standard-response)
-         :usage (:usage standard-response)})
+         :usage       (:usage standard-response)})
       (catch Exception e
-        {:success false
-         :provider "ollama"
-         :error (.getMessage e)
+        {:success    false
+         :provider   "ollama"
+         :error      (.getMessage e)
          :error-type (type e)}))))
