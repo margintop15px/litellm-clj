@@ -19,7 +19,7 @@
             [cognitect.aws.client.api :as aws]
             [cognitect.aws.credentials :as credentials]
             [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [clojure.string :as str]
             [clojure.core.async :as async]))
 
@@ -316,7 +316,7 @@
             response (aws/invoke client {:op :Converse
                                          :request (assoc request-body :modelId model-id)})
             duration (- (System/currentTimeMillis) start-time)]
-        (log/debug "Bedrock request completed" {:model model-id :duration-ms duration})
+        (μ/log ::bedrock/request-completed :litellm/kind :lib :model model-id :duration-ms duration)
 
         ;; Check for errors
         (when (:cognitect.anomalies/category response)
@@ -364,7 +364,7 @@
                           :request {}})
       true)
     (catch Exception e
-      (log/warn "Bedrock health check failed" {:error (.getMessage e)})
+      (μ/log ::bedrock/health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -447,7 +447,7 @@
 
     (async/thread
       (try
-        (log/debug "Making Bedrock streaming request" {:model model-id})
+        (μ/log ::bedrock/streaming-start :litellm/kind :lib :model model-id)
         (let [response (aws/invoke client {:op :ConverseStream
                                            :request (assoc request-body :modelId model-id)})]
 
@@ -465,7 +465,7 @@
             (streaming/close-stream! output-ch)))
 
         (catch Exception e
-          (log/error "Error in Bedrock streaming request" {:error (.getMessage e)})
+          (μ/log ::bedrock/streaming-error :litellm/kind :lib :error (.getMessage e))
           (async/>!! output-ch (streaming/stream-error "bedrock" (.getMessage e)))
           (streaming/close-stream! output-ch))))
 
@@ -484,11 +484,11 @@
                                        :request {}})]
       (if (:cognitect.anomalies/category response)
         (do
-          (log/error "Failed to list Bedrock models" response)
+          (μ/log ::bedrock/list-models-error :litellm/kind :lib :anomaly (:cognitect.anomalies/category response))
           [])
         (map :modelId (:modelSummaries response))))
     (catch Exception e
-      (log/error "Error listing Bedrock models" e)
+      (μ/log ::bedrock/list-models-exception :litellm/kind :lib :error (ex-message e))
       [])))
 
 (defn test-bedrock-connection

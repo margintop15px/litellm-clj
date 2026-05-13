@@ -2,7 +2,7 @@
   "Core streaming utilities for LiteLLM"
   (:require [clojure.core.async :as async :refer [chan close! go-loop <! >!]]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [litellm.errors :as errors]))
 
 ;; ============================================================================
@@ -24,7 +24,7 @@
     (try
       (close! ch)
       (catch Exception e
-        (log/warn "Error closing stream" {:error (.getMessage e)})))))
+        (μ/log ::streaming/close-error :litellm/kind :lib :error (.getMessage e)))))))
 
 ;; ============================================================================
 ;; Error Handling
@@ -199,5 +199,5 @@
         (try
           (json-decoder data true)
           (catch Exception e
-            (log/debug "Failed to parse SSE line" {:line line :error (.getMessage e)})
+            (μ/log ::streaming/sse-parse-error :litellm/kind :lib :line line :error (.getMessage e))
             nil))))))

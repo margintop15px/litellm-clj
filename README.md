@@ -21,6 +21,7 @@ A Clojure port of the popular [LiteLLM](https://github.com/BerriAI/litellm) libr
   - [Streaming Responses](#streaming-responses)
   - [Function Calling](#function-calling-openai)
   - [Structured JSON Output](#structured-json-output)
+- [Observability](#observability)
 - [Documentation](#documentation)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -37,6 +38,7 @@ LiteLLM Clojure provides a unified, idiomatic Clojure interface for interacting 
 - Router API to switch between models in runtime
 - Structured JSON output with Malli schema validation (all providers)
 - Function calling support (Alpha)
+- Built-in inference observability via [mulog](https://github.com/BrunoBonacci/mulog) with OpenTelemetry GenAI attributes → Langfuse
 ---
 
 ## Model Provider Support
@@ -241,11 +243,48 @@ Works the same way with `:anthropic`, `:gemini`, `:mistral`, `:ollama`, and `:op
 
 ---
 
+## Observability
+
+Every `litellm/completion` and `litellm/embedding` call emits a structured
+[mulog](https://github.com/BrunoBonacci/mulog) event with
+[OpenTelemetry GenAI semantic convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+attributes (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, etc.).
+
+Add `com.brunobonacci/mulog-opentelemetry` to your app, configure it to point at
+[Langfuse](https://langfuse.com) (or any OTLP backend), and wrap your agent loop
+with `with-observation` — all completions appear as linked traces automatically:
+
+```clojure
+(require '[com.brunobonacci.mulog :as μ])
+(require '[litellm.observability :as obs])
+(require '[litellm.core :as litellm])
+
+;; Start publisher (add mulog-opentelemetry to your app's deps)
+(μ/start-publisher!
+  {:type    :opentelemetry
+   :url     "https://cloud.langfuse.com/api/public/otel"
+   :headers {"Authorization" (str "Basic " (b64 "pk-lf-...:sk-lf-..."))}
+   :filter-fn #(= :llm (:litellm/kind %))})   ; only LLM events → Langfuse
+
+;; Wrap agent logic — completions become linked child spans in Langfuse
+(obs/with-observation {:session-id "sess-123" :user-id "u-456"}
+  (let [r1 (litellm/completion :openai "gpt-4o" {:messages [...] :tools [...]} config)
+        tool-result (call-tool r1)
+        r2 (litellm/completion :openai "gpt-4o" {:messages [...tool-msg...]} config)]
+    r2))
+```
+
+See the **[Observability Guide](doc/observability.md)** for the full setup, async flows,
+streaming support, and the complete event attribute reference.
+
+---
+
 ## Documentation
 - **[API Guide](doc/api-guide.md)** - Comprehensive API reference
 - **[JSON Output Guide](doc/json-output.md)** - Structured output with Malli schemas
 - **[Error Handling](doc/error_handling.md)** - Examples related to error handling
 - **[Streaming Guide](doc/streaming.md)** - Detailed streaming documentation
+- **[Observability Guide](doc/observability.md)** - mulog events, Langfuse integration, async tracing
 - **[Examples](examples/)** - More code examples
 
 ---

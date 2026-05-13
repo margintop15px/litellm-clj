@@ -1,7 +1,7 @@
 (ns litellm.providers.core
   "Core provider protocol and utilities for LiteLLM"
   (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [litellm.schemas :as schemas]
             [litellm.errors :as errors]
             [litellm.providers.openai :as openai]
@@ -632,7 +632,7 @@
       (+ (* prompt-tokens (:input cost-per-token 0))
          (* completion-tokens (:output cost-per-token 0))))
     (catch Exception e
-      (log/warn "Error calculating cost" {:provider provider-name :model model :error (.getMessage e)})
+      (μ/log ::providers/cost-calculation-error :litellm/kind :lib :provider provider-name :model model :error (.getMessage e))
       0.0)))
 
 ;; ============================================================================
@@ -650,7 +650,7 @@
 (defn log-provider-status
   "Log provider status for debugging"
   [provider-name]
-  (log/info "Provider status" (provider-status provider-name)))
+  (μ/log ::providers/status :litellm/kind :lib :status (provider-status provider-name)))
 
 ;; ============================================================================
 ;; Provider Testing Utilities

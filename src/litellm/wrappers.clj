@@ -1,6 +1,6 @@
 (ns litellm.wrappers
   "Utility wrappers for provider calls with fallback, retry, timeout, and cost-tracking"
-  (:require [clojure.tools.logging :as log]
+  (:require [com.brunobonacci.mulog :as μ]
             [litellm.config :as config]
             [litellm.providers.core :as providers]))
 
@@ -35,13 +35,14 @@
       ;; Try next config
       (let [config-name (first remaining)
             result (try
-                     (log/info "Attempting with config" {:config config-name})
+                     (μ/log ::wrappers/fallback-attempt :litellm/kind :lib :config config-name)
                      {:success true :result (completion-fn config-name request-map)}
                      (catch Exception e
-                       (log/warn "Config failed, trying fallback"
-                                 {:config config-name
-                                  :error (.getMessage e)
-                                  :remaining (rest remaining)})
+                       (μ/log ::wrappers/fallback-config-failed
+                              :litellm/kind :lib
+                              :config config-name
+                              :error (.getMessage e)
+                              :remaining (count (rest remaining)))
                        {:success false :error e}))]
         (if (:success result)
           (:result result)
@@ -85,7 +86,7 @@
     
     (loop [attempt 1]
       (let [result (try
-                     (log/debug "Attempt" {:attempt attempt :max-attempts max-attempts})
+                     (μ/log ::wrappers/retry-attempt :litellm/kind :lib :attempt attempt :max-attempts max-attempts)
                      {:success true :result (completion-fn config-name request-map)}
                      (catch Exception e
                        {:success false :error e}))]
@@ -94,19 +95,21 @@
           (if (and (< attempt max-attempts)
                    (retry-on (:error result)))
             (let [delay-ms (exponential-backoff attempt backoff-ms max-backoff-ms)]
-              (log/warn "Request failed, retrying"
-                        {:attempt attempt
-                         :max-attempts max-attempts
-                         :delay-ms delay-ms
-                         :error (.getMessage (:error result))})
+              (μ/log ::wrappers/retry-backoff
+                     :litellm/kind :lib
+                     :attempt attempt
+                     :max-attempts max-attempts
+                     :delay-ms delay-ms
+                     :error (.getMessage (:error result)))
               (Thread/sleep delay-ms)
               (recur (inc attempt)))
             
             ;; Max attempts reached or error not retryable
             (do
-              (log/error "Request failed after retries"
-                         {:attempts attempt
-                          :error (.getMessage (:error result))})
+              (μ/log ::wrappers/retry-exhausted
+                     :litellm/kind :lib
+                     :attempts attempt
+                     :error (.getMessage (:error result)))
               (throw (:error result)))))))))
 
 ;; ============================================================================
@@ -183,7 +186,7 @@
                         {:messages [...]}
                         completion/chat
                         (fn [cost usage resp]
-                          (log/info \"Request cost:\" cost \"USD\")))"
+                          (μ/log ::cost :amount cost :currency \"USD\")))"
   [config-name request-map completion-fn callback]
   (let [response (completion-fn config-name request-map)
         usage (:usage response)
@@ -207,7 +210,7 @@
     (try
       (callback cost usage response)
       (catch Exception e
-        (log/error "Cost tracking callback failed" {:error (.getMessage e)})))
+        (μ/log ::wrappers/cost-callback-error :litellm/kind :lib :error (.getMessage e))))
     
     ;; Return original response
     response))

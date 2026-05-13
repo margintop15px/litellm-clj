@@ -4,7 +4,7 @@
             [litellm.errors :as errors]
             [hato.client :as http]
             [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [clojure.string :as str]
             [clojure.core.async :as async :refer [go >!]]))
 
@@ -263,7 +263,7 @@
                                       {:executor thread-pool})))]
       (= 200 (:status response)))
     (catch Exception e
-      (log/warn "Gemini health check failed" {:error (.getMessage e)})
+      (μ/log ::gemini/health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -342,13 +342,13 @@
                             transformed (transform-streaming-chunk-impl :gemini parsed)]
                         (>! output-ch transformed))
                       (catch Exception e
-                        (log/debug "Failed to parse Gemini streaming chunk" {:line line :error (.getMessage e)}))))
+                        (μ/log ::gemini/sse-parse-error :litellm/kind :lib :error (.getMessage e)))))
                   (recur)))
               (.close reader)
               (streaming/close-stream! output-ch))))
         
         (catch Exception e
-          (log/error "Error in streaming request" {:error (.getMessage e)})
+          (μ/log ::gemini/streaming-error :litellm/kind :lib :error (.getMessage e))
           (>! output-ch (streaming/stream-error "gemini" (.getMessage e)))
           (streaming/close-stream! output-ch))))
     
@@ -439,7 +439,7 @@
              (map #(str/replace (:name %) #"^models/" "")))
         (throw (ex-info "Failed to list models" {:status (:status response)}))))
     (catch Exception e
-      (log/error "Error listing Gemini models" e)
+      (μ/log ::gemini/list-models-error :litellm/kind :lib :error (ex-message e))
       [])))
 
 (defn validate-api-key
@@ -454,7 +454,7 @@
                              :timeout 5000})]
       (= 200 (:status response)))
     (catch Exception e
-      (log/debug "API key validation failed" {:error (.getMessage e)})
+      (μ/log ::gemini/api-key-validation-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 ;; ============================================================================

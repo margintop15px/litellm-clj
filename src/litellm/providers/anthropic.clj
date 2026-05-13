@@ -4,7 +4,7 @@
             [litellm.errors :as errors]
             [hato.client :as http]
             [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [clojure.string :as str]
             [clojure.core.async :as async]))
 
@@ -338,7 +338,7 @@
                                     {:executor thread-pool})))]
       (= 200 (:status response)))
     (catch Exception e
-      (log/warn "Anthropic health check failed" {:error (.getMessage e)})
+      (μ/log ::anthropic/health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -437,7 +437,7 @@
     ;; Use thread instead of go for blocking I/O
     (async/thread
       (try
-        (log/debug "Making Anthropic streaming request" {:url url :request transformed-request})
+        (μ/log ::anthropic/streaming-start :litellm/kind :lib :url url)
         (let [response (http/post url
                                   {:headers {"x-api-key" (:api-key config)
                                              "anthropic-version" "2023-06-01"
@@ -447,19 +447,19 @@
                                    :timeout (:timeout config 30000)
                                    :as :stream})]
           
-          (log/debug "Received response" {:status (:status response) :headers (:headers response)})
+          (μ/log ::anthropic/streaming-response :litellm/kind :lib :status (:status response))
           
           ;; Check if response is valid
           (cond
             (nil? response)
             (do
-              (log/error "Received nil response from Anthropic API")
+              (μ/log ::anthropic/nil-response :litellm/kind :lib)
               (async/>!! output-ch (streaming/stream-error "anthropic" "Received nil response"))
               (streaming/close-stream! output-ch))
             
             (and (:status response) (>= (:status response) 400))
             (do
-              (log/error "HTTP error from Anthropic" {:status (:status response)})
+              (μ/log ::anthropic/http-error :litellm/kind :lib :status (:status response))
               (async/>!! output-ch (streaming/stream-error "anthropic" 
                                                            (str "HTTP " (:status response))
                                                            :status (:status response)))
@@ -470,14 +470,14 @@
             (let [body (:body response)]
               (if (nil? body)
                 (do
-                  (log/error "Response body is nil")
+                  (μ/log ::anthropic/nil-body :litellm/kind :lib)
                   (async/>!! output-ch (streaming/stream-error "anthropic" "Response body is nil"))
                   (streaming/close-stream! output-ch))
                 
                 (let [reader (java.io.BufferedReader. 
                               (java.io.InputStreamReader. body "UTF-8"))]
                   (try
-                    (log/debug "Starting to read SSE stream")
+                    (μ/log ::anthropic/sse-read-start :litellm/kind :lib)
                     (loop [chunk-count 0]
                       (if-let [line (.readLine reader)]
                         (do
@@ -489,21 +489,21 @@
                                         transformed (transform-streaming-chunk-impl :anthropic parsed)]
                                     (when transformed
                                       (async/>!! output-ch transformed)
-                                      (log/debug "Sent chunk" {:chunk-number (inc chunk-count)})))
+                                      nil))
                                   (catch Exception e
-                                    (log/warn "Failed to parse SSE line" {:line line :error (or (.getMessage e) (str e))}))))))
+                                    (μ/log ::anthropic/sse-parse-error
+                                           :litellm/kind :lib
+                                           :error (or (.getMessage e) (str e)))))))
                           (recur (inc chunk-count)))
-                        (log/debug "Stream ended" {:total-chunks chunk-count})))
+                        (μ/log ::anthropic/stream-ended :litellm/kind :lib :total-chunks chunk-count)))
                     (finally
                       (.close reader)
-                      (streaming/close-stream! output-ch)
-                      (log/debug "Closed reader and output channel"))))))))
-        
+                      (streaming/close-stream! output-ch)))))))
+
         (catch Exception e
-          (log/error "Error in streaming request" 
-                     {:error (or (.getMessage e) (str e))
-                      :error-class (class e)
-                      :stack-trace (take 5 (.getStackTrace e))})
+          (μ/log ::anthropic/streaming-error
+                 :litellm/kind :lib
+                 :error (or (.getMessage e) (str e)))
           (async/>!! output-ch (streaming/stream-error "anthropic" (or (.getMessage e) (str "Exception: " (class e)))))
           (streaming/close-stream! output-ch))))
     
@@ -525,7 +525,7 @@
         (map :id (get-in response [:body :data]))
         (throw (ex-info "Failed to list models" {:status (:status response)}))))
     (catch Exception e
-      (log/error "Error listing Anthropic models" e)
+      (μ/log ::anthropic/list-models-error :litellm/kind :lib :error (ex-message e))
       [])))
 
 (defn validate-api-key
@@ -538,7 +538,7 @@
                              :timeout 5000})]
       (= 200 (:status response)))
     (catch Exception e
-      (log/debug "API key validation failed" {:error (.getMessage e)})
+      (μ/log ::anthropic/api-key-validation-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 ;; ============================================================================

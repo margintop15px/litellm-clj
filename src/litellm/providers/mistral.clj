@@ -3,7 +3,7 @@
   (:require [litellm.errors :as errors]
             [hato.client :as http]
             [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [clojure.string :as str]))
 
 ;; ============================================================================
@@ -248,7 +248,7 @@
                                     {:executor thread-pool})))]
       (= 200 (:status response)))
     (catch Exception e
-      (log/warn "Mistral health check failed" {:error (.getMessage e)})
+      (μ/log ::mistral/health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -269,7 +269,7 @@
         (try
           (json/decode data true)
           (catch Exception e
-            (log/debug "Failed to parse SSE line" {:line line :error (.getMessage e)})
+            (μ/log ::mistral/sse-parse-error :litellm/kind :lib :error (.getMessage e))
             nil))))))
 
 (defn transform-streaming-chunk
@@ -366,7 +366,7 @@
         (map :id (get-in response [:body :data]))
         (throw (ex-info "Failed to list models" {:status (:status response)}))))
     (catch Exception e
-      (log/error "Error listing Mistral models" e)
+      (μ/log ::mistral/list-models-error :litellm/kind :lib :error (ex-message e))
       [])))
 
 (defn validate-api-key
@@ -378,7 +378,7 @@
                              :timeout 5000})]
       (= 200 (:status response)))
     (catch Exception e
-      (log/debug "API key validation failed" {:error (.getMessage e)})
+      (μ/log ::mistral/api-key-validation-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 ;; ============================================================================

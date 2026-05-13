@@ -1,6 +1,6 @@
 (ns litellm.config
   "Configuration registry for provider/model switching"
-  (:require [clojure.tools.logging :as log]))
+  (:require [com.brunobonacci.mulog :as μ]))
 
 ;; ============================================================================
 ;; Configuration Registry
@@ -32,14 +32,14 @@
     (throw (ex-info "Config name must be a keyword" {:config-name config-name})))
   
   (swap! config-registry assoc config-name config-map)
-  (log/info "Registered configuration" {:config-name config-name})
+  (μ/log ::config/registered :litellm/kind :lib :config-name config-name)
   config-name)
 
 (defn unregister!
   "Remove a configuration from the registry"
   [config-name]
   (swap! config-registry dissoc config-name)
-  (log/info "Unregistered configuration" {:config-name config-name})
+  (μ/log ::config/unregistered :litellm/kind :lib :config-name config-name)
   nil)
 
 (defn get-config

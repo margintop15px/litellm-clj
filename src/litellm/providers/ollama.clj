@@ -3,7 +3,7 @@
   (:require [litellm.errors :as errors]
             [hato.client :as http]
             [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [clojure.string :as str]))
 
 ;; ============================================================================
@@ -276,7 +276,7 @@
                                     {:executor thread-pool})))]
       (= 200 (:status response)))
     (catch Exception e
-      (log/warn "Ollama health check failed" {:error (.getMessage e)})
+      (μ/log ::ollama/health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -325,7 +325,7 @@
                 transformed (parse-streaming-chunk chunk request-type)]
             (callback transformed))
           (catch Exception e
-            (log/debug "Failed to parse streaming chunk" {:line line :error (.getMessage e)})))))))
+            (μ/log ::ollama/stream-parse-error :litellm/kind :lib :error (.getMessage e))))))))
 
 ;; ============================================================================
 ;; Utility Functions
@@ -341,7 +341,7 @@
         (map :name (get-in response [:body :models]))
         (throw (ex-info "Failed to list models" {:status (:status response)}))))
     (catch Exception e
-      (log/error "Error listing Ollama models" e)
+      (μ/log ::ollama/list-models-error :litellm/kind :lib :error (ex-message e))
       [])))
 
 ;; ============================================================================

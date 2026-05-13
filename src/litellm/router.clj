@@ -1,6 +1,6 @@
 (ns litellm.router
   "Router-based configuration API for LiteLLM"
-  (:require [clojure.tools.logging :as log]
+  (:require [com.brunobonacci.mulog :as μ]
             [litellm.core :as core]
             [litellm.config :as config]))
 
@@ -245,7 +245,7 @@
 
   (setup-ollama!)
 
-  (log/info "Quick setup complete. Available configs:" (list-configs)))
+  (μ/log ::router/setup-complete :litellm/kind :lib :available-configs (list-configs)))
 
 ;; ============================================================================
 ;; Helper for Creating Routers

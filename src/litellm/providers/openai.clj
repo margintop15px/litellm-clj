@@ -4,7 +4,7 @@
             [litellm.errors :as errors]
             [hato.client :as http]
             [cheshire.core :as json]
-            [clojure.tools.logging :as log]
+            [com.brunobonacci.mulog :as μ]
             [clojure.core.async :as async :refer [go >!]]))
 
 ;; ============================================================================
@@ -254,7 +254,7 @@
                                      {:executor thread-pool})))]
       (= 200 (:status response)))
     (catch Exception e
-      (log/warn "OpenAI health check failed" {:error (.getMessage e)})
+      (μ/log ::openai/health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -319,7 +319,7 @@
               (streaming/close-stream! output-ch))))
         
         (catch Exception e
-          (log/error "Error in streaming request" {:error (.getMessage e)})
+          (μ/log ::openai/streaming-error :litellm/kind :lib :error (.getMessage e))
           (>! output-ch (streaming/stream-error "openai" (.getMessage e)))
           (streaming/close-stream! output-ch))))
     
@@ -405,7 +405,7 @@
         (map :id (get-in response [:body :data]))
         (throw (ex-info "Failed to list models" {:status (:status response)}))))
     (catch Exception e
-      (log/error "Error listing OpenAI models" e)
+      (μ/log ::openai/list-models-error :litellm/kind :lib :error (ex-message e))
       [])))
 
 (defn validate-api-key
@@ -417,7 +417,7 @@
                              :timeout 5000})]
       (= 200 (:status response)))
     (catch Exception e
-      (log/debug "API key validation failed" {:error (.getMessage e)})
+      (μ/log ::openai/api-key-validation-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 ;; ============================================================================
