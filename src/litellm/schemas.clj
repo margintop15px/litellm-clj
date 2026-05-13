@@ -267,6 +267,49 @@
    [:cache-config {:optional true} CacheConfig]])
 
 ;; ============================================================================
+;; Langfuse Prompt Schemas
+;; ============================================================================
+
+(def LangfusePromptType
+  [:enum "text" "chat"])
+
+(def LangfuseChatMessage
+  [:map
+   [:role :string]
+   [:content :string]])
+
+(def LangfuseMessagePlaceholder
+  [:map
+   [:type [:= "placeholder"]]
+   [:name :string]])
+
+(def LangfuseChatEntry
+  [:or LangfuseChatMessage LangfuseMessagePlaceholder])
+
+(def LangfusePrompt
+  "A prompt object as returned by Langfuse's /api/public/v2/prompts API."
+  [:map
+   [:name :string]
+   [:version :int]
+   [:type LangfusePromptType]
+   [:prompt [:or :string [:vector LangfuseChatEntry]]]
+   [:labels {:optional true} [:vector :string]]
+   [:tags    {:optional true} [:vector :string]]
+   [:config  {:optional true} :map]
+   [:commit-message {:optional true} [:maybe :string]]])
+
+(def CreatePromptSpec
+  "Input shape for creating a new prompt version. Server assigns :version."
+  [:map
+   [:name :string]
+   [:type LangfusePromptType]
+   [:prompt [:or :string [:vector LangfuseChatEntry]]]
+   [:labels {:optional true} [:vector :string]]
+   [:tags    {:optional true} [:vector :string]]
+   [:config  {:optional true} :map]
+   [:commit-message {:optional true} :string]])
+
+;; ============================================================================
 ;; Validation Helpers
 ;; ============================================================================
 
