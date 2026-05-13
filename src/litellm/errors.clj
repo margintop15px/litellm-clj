@@ -22,6 +22,7 @@
     :litellm/authorization-error
     :litellm/provider-not-found
     :litellm/model-not-found
+    :litellm/prompt-not-found
     :litellm/unsupported-feature
     :litellm/quota-exceeded})
 
@@ -125,6 +126,19 @@
                              :provider-code provider-code
                              :context {:model            model
                                        :available-models available-models})))
+
+(defn prompt-not-found
+  "Named prompt (e.g. a Langfuse managed prompt) doesn't exist"
+  [provider prompt-name & {:keys [http-status provider-code version label] :as opts}]
+  (ex-info (str "Prompt not found: " prompt-name)
+           (build-error-data :litellm/prompt-not-found
+                             (str "Prompt not found: " prompt-name)
+                             :provider provider
+                             :http-status (or http-status 404)
+                             :provider-code provider-code
+                             :context {:prompt-name prompt-name
+                                       :version     version
+                                       :label       label})))
 
 (defn unsupported-feature
   "Feature not supported by provider"
