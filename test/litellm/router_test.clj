@@ -50,26 +50,26 @@
 
 (deftest test-register-router-config
   (testing "Register configuration with router function"
-    (let [router-fn (fn [req]
-                      (if (> (count (:messages req)) 5)
-                        {:provider :anthropic :model "claude-3-opus-20240229"}
-                        {:provider :openai :model "gpt-4o-mini"}))
-          config-map {:router router-fn
-                     :configs {:openai {:api-key "openai-key"}
-                              :anthropic {:api-key "anthropic-key"}}}]
+    (let [router-fn  (fn [req]
+                       (if (> (count (:messages req)) 5)
+                         {:provider :anthropic :model "claude-3-opus-20240229"}
+                         {:provider :openai :model "gpt-4o-mini"}))
+          config-map {:router  router-fn
+                      :configs {:openai    {:api-key "openai-key"}
+                                :anthropic {:api-key "anthropic-key"}}}]
       (router/register! :smart config-map)
       (is (some? (router/get-config :smart)))
       (is (fn? (:router (router/get-config :smart)))))))
 
 (deftest test-create-router
   (testing "Create router configuration helper"
-    (let [router-fn (fn [{:keys [priority]}]
-                      (case priority
-                        :high {:provider :anthropic :model "claude-3-opus-20240229"}
-                        :low {:provider :openai :model "gpt-4o-mini"}
-                        {:provider :openai :model "gpt-4"}))
-          configs {:openai {:api-key "sk-..."}
-                  :anthropic {:api-key "sk-ant-..."}}
+    (let [router-fn     (fn [{:keys [priority]}]
+                          (case priority
+                            :high {:provider :anthropic :model "claude-3-opus-20240229"}
+                            :low {:provider :openai :model "gpt-4o-mini"}
+                            {:provider :openai :model "gpt-4"}))
+          configs       {:openai    {:api-key "sk-..."}
+                         :anthropic {:api-key "sk-ant-..."}}
           router-config (router/create-router router-fn configs)]
       (is (map? router-config))
       (is (fn? (:router router-config)))
@@ -239,14 +239,14 @@
 (deftest test-extract-message
   (testing "Extract message re-exported from core"
     (let [response {:choices [{:message {:role :assistant :content "Hello"}}]}
-          message (router/extract-message response)]
+          message  (router/extract-message response)]
       (is (= :assistant (:role message)))
       (is (= "Hello" (:content message))))))
 
 (deftest test-extract-usage
   (testing "Extract usage re-exported from core"
     (let [response {:usage {:prompt-tokens 10 :completion-tokens 20 :total-tokens 30}}
-          usage (router/extract-usage response)]
+          usage    (router/extract-usage response)]
       (is (= 10 (:prompt-tokens usage)))
       (is (= 20 (:completion-tokens usage))))))
 
@@ -263,7 +263,7 @@
 (deftest test-estimate-request-tokens
   (testing "Request token estimation re-exported from core"
     (let [request {:messages [{:role :user :content "What is 2+2?"}]}
-          tokens (router/estimate-request-tokens request)]
+          tokens  (router/estimate-request-tokens request)]
       (is (number? tokens))
       (is (pos? tokens)))))
 
@@ -286,8 +286,8 @@
   (testing "Completion uses registered config"
     (router/register! :test-openai
                       {:provider :openai
-                       :model "gpt-4"
-                       :config {:api-key "test-key"}})
+                       :model    "gpt-4"
+                       :config   {:api-key "test-key"}})
     ;; Will fail with authentication error, but that proves it's trying to use the config
     (is (thrown? Exception
                  (router/completion :test-openai {:messages [{:role :user :content "test"}]})))))
@@ -300,8 +300,8 @@
   (testing "Chat function without system prompt"
     (router/register! :test-chat
                       {:provider :openai
-                       :model "gpt-4"
-                       :config {:api-key "test-key"}})
+                       :model    "gpt-4"
+                       :config   {:api-key "test-key"}})
     ;; Will fail with authentication, but proves function works
     (is (thrown? Exception
                  (router/chat :test-chat "What is 2+2?")))))
@@ -310,12 +310,12 @@
   (testing "Chat function with system prompt"
     (router/register! :test-chat-sys
                       {:provider :openai
-                       :model "gpt-4"
-                       :config {:api-key "test-key"}})
+                       :model    "gpt-4"
+                       :config   {:api-key "test-key"}})
     ;; Will fail with authentication, but proves function works
     (is (thrown? Exception
-                 (router/chat :test-chat-sys "What is 2+2?" 
-                             :system-prompt "You are a math tutor")))))
+                 (router/chat :test-chat-sys "What is 2+2?"
+                              :system-prompt "You are a math tutor")))))
 
 ;; ============================================================================
 ;; Integration Tests (require API keys)
@@ -326,7 +326,7 @@
     (when (System/getenv "OPENAI_API_KEY")
       (router/setup-openai!)
       (let [response (router/completion :openai
-                                        {:messages [{:role :user :content "Say 'test successful' and nothing else"}]
+                                        {:messages   [{:role :user :content "Say 'test successful' and nothing else"}]
                                          :max-tokens 10})]
         (is (map? response))
         (is (contains? response :choices))
@@ -344,17 +344,17 @@
 (deftest ^:integration test-router-with-dynamic-routing
   (testing "Router with dynamic routing function"
     (when (System/getenv "OPENAI_API_KEY")
-      (let [router-fn (fn [req]
-                        (if (> (count (:messages req)) 3)
-                          {:provider :openai :model "gpt-4"}
-                          {:provider :openai :model "gpt-3.5-turbo"}))
-            config-map {:router router-fn
-                       :configs {:openai {:api-key (System/getenv "OPENAI_API_KEY")}}}]
+      (let [router-fn  (fn [req]
+                         (if (> (count (:messages req)) 3)
+                           {:provider :openai :model "gpt-4"}
+                           {:provider :openai :model "gpt-3.5-turbo"}))
+            config-map {:router  router-fn
+                        :configs {:openai {:api-key (System/getenv "OPENAI_API_KEY")}}}]
         (router/register! :dynamic config-map)
-        
+
         ;; Small request (should use gpt-3.5-turbo)
         (let [response (router/completion :dynamic
-                                          {:messages [{:role :user :content "Hi"}]
+                                          {:messages   [{:role :user :content "Hi"}]
                                            :max-tokens 10})]
           (is (map? response))
           (is (string? (router/extract-content response))))))))

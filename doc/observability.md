@@ -15,7 +15,7 @@ The library only depends on **mulog core**. Which publisher(s) to use — consol
 litellm-clj                    Your app                  Backend
 ─────────────────────────      ───────────────────────   ─────────────
 litellm/completion          →  mulog publisher(s)    →  Langfuse OTLP
-  emits ::gen-ai/completion       :opentelemetry           /api/public/otel
+  emits :gen-ai/completion       :opentelemetry           /api/public/otel
   with gen_ai.* attributes        :console
   :litellm/kind :llm              :elasticsearch
 ```
@@ -41,15 +41,15 @@ In your application's `deps.edn` (not the library):
 ### 2. Configure and start a publisher
 
 ```clojure
-(require '[com.brunobonacci.mulog :as μ])
+(require '[com.brunobonacci.mulog :as mu])
 (require '[litellm.observability :as obs])
 
 ;; Development: print all events to console
-(def stop-publisher! (μ/start-publisher! {:type :console}))
+(def stop-publisher! (mu/start-publisher! {:type :console}))
 
 ;; Production: forward LLM events to Langfuse via OpenTelemetry
 (def stop-publisher!
-  (μ/start-publisher!
+  (mu/start-publisher!
     {:type :multi
      :publishers
      [{:type    :opentelemetry
@@ -123,18 +123,18 @@ Trace: litellm/observation  [session=sess-abc, user=user-456]
 mulog context is thread-local. Cross async boundaries by capturing and restoring it:
 
 ```clojure
-(require '[com.brunobonacci.mulog :as μ])
+(require '[com.brunobonacci.mulog :as mu])
 
 (obs/with-observation {:session-id "async-sess"}
   (let [ctx (obs/capture-context)]          ; snapshot before async boundary
     ;; In a core.async go block:
     (async/go
-      (μ/with-context ctx                   ; restore context
+      (mu/with-context ctx                   ; restore context
         (<! (async/thread
               (litellm/completion :openai "gpt-4o" {:messages [...]} config)))))
     ;; Or in a future:
     @(future
-       (μ/with-context ctx
+       (mu/with-context ctx
          (litellm/completion :openai "gpt-4o" {:messages [...]} config)))))
 ```
 
@@ -153,7 +153,7 @@ trace span:
                              {:messages [{:role :user :content "Tell me a story"}]
                               :stream   true}
                              {:api-key (System/getenv "OPENAI_API_KEY")})]
-  ;; Collects all chunks, emits a ::gen-ai/completion-stream span
+  ;; Collects all chunks, emits a :gen-ai/completion-stream span
   (obs/observe-stream ch :openai "gpt-4o" {:messages [...]}))
 ;; => {:content "Once upon a time..." :chunks [...] :error nil}
 ```
@@ -166,7 +166,7 @@ trace span:
 
 ## Event Reference
 
-### `::gen-ai/completion`
+### `:gen-ai/completion`
 
 Emitted once per non-streaming `litellm/completion` call.
 
@@ -193,7 +193,7 @@ Emitted once per non-streaming `litellm/completion` call.
 | `:langfuse.session_id` | string? | From `with-observation` `:session-id` |
 | `:langfuse.user_id` | string? | From `with-observation` `:user-id` |
 
-### `::gen-ai/embedding`
+### `:gen-ai/embedding`
 
 Emitted once per `litellm/embedding` call.
 
@@ -203,7 +203,7 @@ Emitted once per `litellm/embedding` call.
 | `:gen_ai.usage.input_tokens` | int |
 | `:gen_ai.response.embedding_count` | int |
 
-### `::gen-ai/completion-stream`
+### `:gen-ai/completion-stream`
 
 Emitted by `observe-stream` after the stream is fully consumed.
 
@@ -211,7 +211,7 @@ Emitted by `observe-stream` after the stream is fully consumed.
 |-----|-------|
 | `:gen_ai.output.content` | Accumulated text |
 
-### `::litellm/observation`
+### `:litellm/observation`
 
 Emitted by `with-observation` as the root trace span.
 

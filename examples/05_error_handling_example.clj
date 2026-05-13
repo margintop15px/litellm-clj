@@ -16,24 +16,24 @@
   (try
     (llm/completion :openai "gpt-4"
                     {:messages [{:role :user :content "Hello"}]
-                     :api-key "invalid-key"})
+                     :api-key  "invalid-key"})
     (catch clojure.lang.ExceptionInfo e
       (cond
         ;; Check for specific error types
         (errors/authentication-error? e)
         (println "❌ Invalid API key!")
-        
+
         (errors/rate-limit-error? e)
-        (println "⏸️  Rate limited, retry after:" 
+        (println "⏸️  Rate limited, retry after:"
                  (:retry-after (ex-data e)))
-        
+
         (errors/model-not-found-error? e)
         (println "❌ Model not found")
-        
+
         ;; Generic litellm error
         (errors/litellm-error? e)
         (println "⚠️  LiteLLM error:" (errors/error-summary e))
-        
+
         ;; Unknown error
         :else
         (println "❌ Unexpected error:" (.getMessage e))))))
@@ -47,7 +47,7 @@
   (try
     (llm/completion :openai "gpt-4"
                     {:messages [{:role :user :content "Hello"}]
-                     :api-key (System/getenv "OPENAI_API_KEY")})
+                     :api-key  (System/getenv "OPENAI_API_KEY")})
     (catch clojure.lang.ExceptionInfo e
       (let [category (errors/get-error-category e)]
         (case category
@@ -55,18 +55,18 @@
           (do
             (log/error "Client error - fix your request:")
             (println (errors/error-details e)))
-          
+
           :provider-error
           (do
             (log/warn "Provider issue - might retry...")
             (println "Recoverable?" (errors/recoverable? e)))
-          
+
           :response-error
           (log/error "Invalid response:" (errors/error-details e))
-          
+
           :system-error
           (log/error "System error:" (errors/error-details e))
-          
+
           (throw e))))))
 
 ;; ============================================================================
@@ -80,8 +80,8 @@
     (let [result (try
                    (llm/completion provider model request)
                    (catch clojure.lang.ExceptionInfo e
-                     (if (and (errors/should-retry? e 
-                                                    :max-retries max-retries 
+                     (if (and (errors/should-retry? e
+                                                    :max-retries max-retries
                                                     :current-retry attempt)
                               (< attempt max-retries))
                        {:retry true :error e :attempt attempt}
@@ -90,7 +90,7 @@
         (let [delay (errors/retry-delay (:error result) attempt)]
           (log/info "Retrying after" delay "ms"
                     {:error-type (:type (ex-data (:error result)))
-                     :attempt (inc attempt)})
+                     :attempt    (inc attempt)})
           (Thread/sleep delay)
           (recur (inc attempt)))
         result))))
@@ -98,11 +98,11 @@
 (defn retry-example []
   "Example of using retry logic"
   (completion-with-retry
-    :openai
-    "gpt-4"
-    {:messages [{:role :user :content "Hello"}]
-     :api-key (System/getenv "OPENAI_API_KEY")}
-    3))
+   :openai
+   "gpt-4"
+   {:messages [{:role :user :content "Hello"}]
+    :api-key  (System/getenv "OPENAI_API_KEY")}
+   3))
 
 ;; ============================================================================
 ;; Advanced Retry with Timeout
@@ -116,24 +116,24 @@
       (let [elapsed (- (System/currentTimeMillis) start-time)]
         ;; Check overall timeout
         (if (> elapsed timeout-ms)
-          (throw (errors/timeout-error 
-                   (name provider)
-                   "Overall operation timeout"
-                   :timeout-ms timeout-ms))
+          (throw (errors/timeout-error
+                  (name provider)
+                  "Overall operation timeout"
+                  :timeout-ms timeout-ms))
           (let [result (try
                          (llm/completion provider model request)
                          (catch clojure.lang.ExceptionInfo e
-                           (if (and (errors/should-retry? e 
-                                                         :max-retries max-retries 
-                                                         :current-retry attempt)
+                           (if (and (errors/should-retry? e
+                                                          :max-retries max-retries
+                                                          :current-retry attempt)
                                     (< attempt max-retries))
                              {:retry true :error e :attempt attempt :elapsed elapsed}
                              (throw e))))]
             (if (:retry result)
-              (let [delay (errors/retry-delay (:error result) attempt)
+              (let [delay     (errors/retry-delay (:error result) attempt)
                     remaining (- timeout-ms (:elapsed result))]
                 (if (> delay remaining)
-                  (throw (:error result))  ; Not enough time to retry
+                  (throw (:error result)) ; Not enough time to retry
                   (do
                     (Thread/sleep delay)
                     (recur (inc attempt)))))
@@ -142,12 +142,12 @@
 (defn timeout-retry-example []
   "Example with timeout and retry"
   (completion-with-retry-timeout
-    :openai
-    "gpt-4"
-    {:messages [{:role :user :content "Hello"}]
-     :api-key (System/getenv "OPENAI_API_KEY")}
-    {:max-retries 3
-     :timeout-ms 30000}))
+   :openai
+   "gpt-4"
+   {:messages [{:role :user :content "Hello"}]
+    :api-key  (System/getenv "OPENAI_API_KEY")}
+   {:max-retries 3
+    :timeout-ms  30000}))
 
 ;; ============================================================================
 ;; Rate Limit Handling
@@ -158,7 +158,7 @@
   (try
     (llm/completion :openai "gpt-4"
                     {:messages [{:role :user :content "Hello"}]
-                     :api-key (System/getenv "OPENAI_API_KEY")})
+                     :api-key  (System/getenv "OPENAI_API_KEY")})
     (catch clojure.lang.ExceptionInfo e
       (when (errors/rate-limit-error? e)
         (let [retry-after (:retry-after (ex-data e))]
@@ -181,8 +181,8 @@
     ;; This might throw if streaming is not supported
     (let [ch (llm/completion :openai "gpt-4"
                              {:messages [{:role :user :content "Hello"}]
-                              :stream true
-                              :api-key (System/getenv "OPENAI_API_KEY")})]
+                              :stream   true
+                              :api-key  (System/getenv "OPENAI_API_KEY")})]
       (loop []
         (if-let [chunk (<!! ch)]
           (if (streaming/is-error-chunk? chunk)
@@ -208,24 +208,24 @@
   "Streaming using callbacks for error handling"
   (let [ch (llm/completion :openai "gpt-4"
                            {:messages [{:role :user :content "Write a haiku"}]
-                            :stream true
-                            :api-key (System/getenv "OPENAI_API_KEY")})]
+                            :stream   true
+                            :api-key  (System/getenv "OPENAI_API_KEY")})]
     (streaming/consume-stream-with-callbacks ch
-      ;; on-chunk
-      (fn [chunk] 
-        (print (streaming/extract-content chunk))
-        (flush))
-      
-      ;; on-complete
-      (fn [response] 
-        (println "\n✅ Streaming complete!")
-        (println "Response ID:" (:id response)))
-      
-      ;; on-error
-      (fn [error-chunk]
-        (log/error "Stream error:" (:message error-chunk))
-        (when (:recoverable? error-chunk)
-          (println "This error is recoverable - you can retry"))))))
+                                             ;; on-chunk
+                                             (fn [chunk]
+                                               (print (streaming/extract-content chunk))
+                                               (flush))
+
+                                             ;; on-complete
+                                             (fn [response]
+                                               (println "\n✅ Streaming complete!")
+                                               (println "Response ID:" (:id response)))
+
+                                             ;; on-error
+                                             (fn [error-chunk]
+                                               (log/error "Stream error:" (:message error-chunk))
+                                               (when (:recoverable? error-chunk)
+                                                 (println "This error is recoverable - you can retry"))))))
 
 ;; ============================================================================
 ;; Error Analysis and Logging
@@ -236,22 +236,22 @@
   (try
     (llm/completion :openai "gpt-4"
                     {:messages [{:role :user :content "Hello"}]
-                     :api-key "invalid"})
+                     :api-key  "invalid"})
     (catch clojure.lang.ExceptionInfo e
       (when (errors/litellm-error? e)
         ;; Get detailed error information
         (let [details (errors/error-details e)]
           (log/error "Completion failed"
-                     {:type (:error-type details)
-                      :category (:category details)
-                      :message (:message details)
-                      :provider (:provider details)
-                      :http-status (:http-status details)
+                     {:type          (:error-type details)
+                      :category      (:category details)
+                      :message       (:message details)
+                      :provider      (:provider details)
+                      :http-status   (:http-status details)
                       :provider-code (:provider-code details)
-                      :recoverable? (:recoverable? details)
-                      :request-id (:request-id details)
-                      :context (:context details)}))
-        
+                      :recoverable?  (:recoverable? details)
+                      :request-id    (:request-id details)
+                      :context       (:context details)}))
+
         ;; Also print human-readable summary
         (println "Error summary:" (errors/error-summary e))))))
 
@@ -269,9 +269,9 @@
                      (println "Trying provider:" provider)
                      (llm/completion provider model
                                      {:messages [{:role :user :content message}]
-                                      :api-key (System/getenv 
-                                                 (str (str/upper-case (name provider)) 
-                                                      "_API_KEY"))})
+                                      :api-key  (System/getenv
+                                                  (str (str/upper-case (name provider))
+                                                       "_API_KEY"))})
                      (catch clojure.lang.ExceptionInfo e
                        (if (errors/client-error? e)
                          ;; Client error - don't try other providers
@@ -289,9 +289,9 @@
 (defn fallback-example []
   "Example of provider fallback"
   (completion-with-fallback
-    "gpt-4"
-    "What is 2+2?"
-    [:openai :anthropic :gemini]))
+   "gpt-4"
+   "What is 2+2?"
+   [:openai :anthropic :gemini]))
 
 ;; ============================================================================
 ;; Context Preservation
@@ -302,17 +302,17 @@
   (try
     (llm/completion :openai "gpt-4"
                     {:messages [{:role :user :content "Hello"}]
-                     :api-key "invalid"})
+                     :api-key  "invalid"})
     (catch clojure.lang.ExceptionInfo e
       ;; BAD: Just logging the message
       ;; (log/error (.getMessage e))
-      
+
       ;; GOOD: Preserving full context
-      (log/error "Completion failed" 
-                 {:error (errors/error-details e)
+      (log/error "Completion failed"
+                 {:error   (errors/error-details e)
                   :request {:provider :openai
-                            :model "gpt-4"}})
-      
+                            :model    "gpt-4"}})
+
       ;; Also log request ID for debugging with provider
       (when-let [req-id (:request-id (ex-data e))]
         (log/error "Provider request ID:" req-id)))))
@@ -324,16 +324,16 @@
 (defn test-error-types []
   "Test various error scenarios"
   (println "\n=== Testing Error Types ===\n")
-  
+
   ;; Test authentication error
   (try
     (llm/completion :openai "gpt-4"
                     {:messages [{:role :user :content "Hi"}]
-                     :api-key "invalid"})
+                     :api-key  "invalid"})
     (catch clojure.lang.ExceptionInfo e
       (println "✅ Authentication error detected:"
                (errors/authentication-error? e))))
-  
+
   ;; Test provider not found
   (try
     (llm/completion :nonexistent "model"
@@ -341,12 +341,12 @@
     (catch clojure.lang.ExceptionInfo e
       (println "✅ Provider not found detected:"
                (errors/error-type? e :litellm/provider-not-found))))
-  
+
   ;; Test unsupported feature
   (try
     (llm/completion :anthropic "llama2"
                     {:messages [{:role :user :content "Hi"}]
-                     :stream true})  ; Ollama might not support streaming
+                     :stream   true}) ; Ollama might not support streaming
     (catch clojure.lang.ExceptionInfo e
       (when (errors/error-type? e :litellm/unsupported-feature)
         (println "✅ Unsupported feature detected")))))
@@ -358,44 +358,44 @@
 (defn -main []
   "Run all error handling examples"
   (println "=== LiteLLM Error Handling Examples ===\n")
-  
+
   (println "1. Basic error handling:")
   (basic-error-handling)
-  
+
   (println "\n2. Detailed error logging:")
   (detailed-error-logging)
-  
+
   (println "\n3. Testing error types:")
   (test-error-types)
-  
+
   (println "\n4. Rate limit handling:")
   (handle-rate-limits)
-  
+
   (println "\n5. Streaming error handling:")
   (streaming-basic-error-handling)
-  
+
   (println "\n✅ Examples complete!"))
 
 (comment
-  ;; Run individual examples in REPL
-  
-  ;; Basic error handling
-  (basic-error-handling)
-  
-  ;; Retry example (with valid API key)
-  (retry-example)
-  
-  ;; Timeout and retry
-  (timeout-retry-example)
-  
-  ;; Streaming with errors
-  (streaming-basic-error-handling)
-  
-  ;; Provider fallback
-  (fallback-example)
-  
-  ;; Test error types
-  (test-error-types)
-  
-  ;; Run all examples
-  (-main))
+ ;; Run individual examples in REPL
+
+ ;; Basic error handling
+ (basic-error-handling)
+
+ ;; Retry example (with valid API key)
+ (retry-example)
+
+ ;; Timeout and retry
+ (timeout-retry-example)
+
+ ;; Streaming with errors
+ (streaming-basic-error-handling)
+
+ ;; Provider fallback
+ (fallback-example)
+
+ ;; Test error types
+ (test-error-types)
+
+ ;; Run all examples
+ (-main))

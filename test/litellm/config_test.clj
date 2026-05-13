@@ -17,21 +17,21 @@
 (deftest test-register-simple-config
   (testing "Register simple provider configuration"
     (let [config-name :test-openai
-          config-map {:provider :openai
-                     :model "gpt-4"
-                     :config {:api-key "test-key"}}]
+          config-map  {:provider :openai
+                       :model    "gpt-4"
+                       :config   {:api-key "test-key"}}]
       (is (= config-name (config/register! config-name config-map)))
       (is (= config-map (config/get-config config-name))))))
 
 (deftest test-register-with-router
   (testing "Register configuration with router function"
-    (let [router-fn (fn [req] 
-                     (if (> (count (:messages req)) 5)
-                       {:provider :anthropic :model "claude-3-opus"}
-                       {:provider :openai :model "gpt-4o-mini"}))
-          config-map {:router router-fn
-                     :configs {:openai {:api-key "openai-key"}
-                              :anthropic {:api-key "anthropic-key"}}}]
+    (let [router-fn  (fn [req]
+                       (if (> (count (:messages req)) 5)
+                         {:provider :anthropic :model "claude-3-opus"}
+                         {:provider :openai :model "gpt-4o-mini"}))
+          config-map {:router  router-fn
+                      :configs {:openai    {:api-key "openai-key"}
+                                :anthropic {:api-key "anthropic-key"}}}]
       (config/register! :smart config-map)
       (is (some? (config/get-config :smart)))
       (is (fn? (:router (config/get-config :smart)))))))
@@ -72,8 +72,8 @@
 (deftest test-resolve-simple-config
   (testing "Resolve simple static configuration"
     (let [config-map {:provider :openai
-                     :model "gpt-4"
-                     :config {:api-key "test-key"}}]
+                      :model    "gpt-4"
+                      :config   {:api-key "test-key"}}]
       (config/register! :simple config-map)
       (let [resolved (config/resolve-config :simple {:messages []})]
         (is (= :openai (:provider resolved)))
@@ -82,21 +82,21 @@
 
 (deftest test-resolve-with-router
   (testing "Resolve configuration with router function"
-    (let [router-fn (fn [req] 
-                     (if (> (count (:messages req)) 5)
-                       {:provider :anthropic :model "claude-3-opus"}
-                       {:provider :openai :model "gpt-4o-mini"}))
-          config-map {:router router-fn
-                     :configs {:openai {:api-key "openai-key"}
-                              :anthropic {:api-key "anthropic-key"}}}]
+    (let [router-fn  (fn [req]
+                       (if (> (count (:messages req)) 5)
+                         {:provider :anthropic :model "claude-3-opus"}
+                         {:provider :openai :model "gpt-4o-mini"}))
+          config-map {:router  router-fn
+                      :configs {:openai    {:api-key "openai-key"}
+                                :anthropic {:api-key "anthropic-key"}}}]
       (config/register! :smart config-map)
-      
+
       ;; Small request -> OpenAI
       (let [resolved (config/resolve-config :smart {:messages [{:role :user :content "hi"}]})]
         (is (= :openai (:provider resolved)))
         (is (= "gpt-4o-mini" (:model resolved)))
         (is (= {:api-key "openai-key"} (:config resolved))))
-      
+
       ;; Large request -> Anthropic
       (let [resolved (config/resolve-config :smart {:messages (repeat 10 {:role :user :content "test"})})]
         (is (= :anthropic (:provider resolved)))
@@ -140,7 +140,7 @@
     (let [config-map {:provider :openai :model "gpt-4"}]
       (is (= :validated (config/register-with-validation! :validated config-map)))
       (is (some? (config/get-config :validated)))))
-  
+
   (testing "Register with validation rejects invalid config"
     (is (thrown? Exception
                  (config/register-with-validation! :invalid {:model "gpt-4"})))))

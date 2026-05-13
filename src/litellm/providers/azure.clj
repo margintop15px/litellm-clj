@@ -4,7 +4,7 @@
             [litellm.errors :as errors]
             [hato.client :as http]
             [cheshire.core :as json]
-            [com.brunobonacci.mulog :as μ]
+            [com.brunobonacci.mulog :as mu]
             [clojure.core.async :as async :refer [go >!]]))
 
 (defn- ?assoc
@@ -24,7 +24,7 @@
   "Transform messages to Azure OpenAI format (OpenAI-compatible)"
   [messages]
   (map (fn [msg]
-         (let [base {:role (name (:role msg))
+         (let [base {:role    (name (:role msg))
                      :content (:content msg)}]
            (cond-> base
              (:name msg) (assoc :name (:name msg))
@@ -36,7 +36,7 @@
   [tools]
   (when tools
     (map (fn [tool]
-           {:type (:tool-type tool "function")
+           {:type     (:tool-type tool "function")
             :function (select-keys (:function tool) [:name :description :parameters])})
          tools)))
 
@@ -57,33 +57,33 @@
   [tool-calls]
   (when tool-calls
     (map (fn [tool-call]
-           {:id (:id tool-call)
-            :type (:type tool-call)
-            :function {:name (get-in tool-call [:function :name])
+           {:id       (:id tool-call)
+            :type     (:type tool-call)
+            :function {:name      (get-in tool-call [:function :name])
                        :arguments (get-in tool-call [:function :arguments])}})
          tool-calls)))
 
 (defn transform-message
   "Transform Azure OpenAI message to standard format"
   [message]
-  (cond-> {:role (keyword (:role message))
+  (cond-> {:role    (keyword (:role message))
            :content (:content message)}
     (:tool_calls message) (assoc :tool-calls (transform-tool-calls (:tool_calls message)))))
 
 (defn transform-choice
   "Transform Azure OpenAI choice to standard format"
   [choice]
-  {:index (:index choice)
-   :message (transform-message (:message choice))
+  {:index         (:index choice)
+   :message       (transform-message (:message choice))
    :finish-reason (keyword (:finish_reason choice))})
 
 (defn transform-usage
   "Transform Azure OpenAI usage to standard format"
   [usage]
   (when usage
-    {:prompt-tokens (:prompt_tokens usage)
+    {:prompt-tokens     (:prompt_tokens usage)
      :completion-tokens (:completion_tokens usage)
-     :total-tokens (:total_tokens usage)}))
+     :total-tokens      (:total_tokens usage)}))
 
 ;; ============================================================================
 ;; Error Handling
@@ -92,12 +92,12 @@
 (defn handle-error-response
   "Handle Azure OpenAI API error responses"
   [provider response]
-  (let [status (:status response)
-        body (:body response)
-        error-info (get body :error {})
-        message (or (:message error-info) "Unknown error")
+  (let [status        (:status response)
+        body          (:body response)
+        error-info    (get body :error {})
+        message       (or (:message error-info) "Unknown error")
         provider-code (:code error-info)
-        request-id (get-in response [:headers "x-request-id"])]
+        request-id    (get-in response [:headers "x-request-id"])]
     (throw (errors/http-status->error
             status
             "azure"
@@ -118,16 +118,16 @@
   - :deployment - Deployment name (e.g., gpt-4-deployment)
   - :api-version - API version (default: 2024-10-21)"
   [config]
-  (let [api-base (:api-base config)
-        deployment (:deployment config)
+  (let [api-base    (:api-base config)
+        deployment  (:deployment config)
         api-version (:api-version config "2024-10-21")]
     (str api-base "/openai/deployments/" deployment "/chat/completions?api-version=" api-version)))
 
 (defn build-embedding-url
   "Build the Azure OpenAI embeddings URL."
   [config]
-  (let [api-base (:api-base config)
-        deployment (:deployment config)
+  (let [api-base    (:api-base config)
+        deployment  (:deployment config)
         api-version (:api-version config "2024-10-21")]
     (str api-base "/openai/deployments/" deployment "/embeddings?api-version=" api-version)))
 
@@ -138,11 +138,11 @@
 (def default-cost-map
   "Default cost per token for Azure OpenAI models (in USD)
    Note: Azure pricing may vary by region and agreement"
-  {"gpt-4" {:input 0.00003 :output 0.00006}
-   "gpt-4-turbo" {:input 0.00001 :output 0.00003}
-   "gpt-4o" {:input 0.000005 :output 0.000015}
-   "gpt-4o-mini" {:input 0.00000015 :output 0.0000006}
-   "gpt-35-turbo" {:input 0.0000005 :output 0.0000015}
+  {"gpt-4"            {:input 0.00003 :output 0.00006}
+   "gpt-4-turbo"      {:input 0.00001 :output 0.00003}
+   "gpt-4o"           {:input 0.000005 :output 0.000015}
+   "gpt-4o-mini"      {:input 0.00000015 :output 0.0000006}
+   "gpt-35-turbo"     {:input 0.0000005 :output 0.0000015}
    "gpt-35-turbo-16k" {:input 0.000003 :output 0.000004}})
 
 ;; ============================================================================
@@ -168,10 +168,10 @@
       (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request)))
       (= :json-object (get-in request [:response-format :type])) (assoc :response_format {:type "json_object"})
       (= :json-schema (get-in request [:response-format :type]))
-        (assoc :response_format {:type "json_schema"
-                                 :json_schema (let [js (get-in request [:response-format :json-schema])]
-                                                (cond-> {:name (:name js) :schema (:schema js)}
-                                                  (contains? js :strict) (assoc :strict (:strict js))))}))))
+      (assoc :response_format {:type        "json_schema"
+                               :json_schema (let [js (get-in request [:response-format :json-schema])]
+                                              (cond-> {:name (:name js) :schema (:schema js)}
+                                                (contains? js :strict) (assoc :strict (:strict js))))}))))
 
 (defn make-request-impl
   "Azure OpenAI-specific make-request implementation"
@@ -180,20 +180,20 @@
     (errors/wrap-http-errors
      "azure"
      #(let [start-time (System/currentTimeMillis)
-            response (http/post url
-                                (conj {:headers (?assoc {"Content-Type" "application/json"
-                                                         "User-Agent" "litellm-clj/1.0.0"}
-                                                        "Authorization" (:authorization config)
-                                                        "api-key" (:api-key config))
-                                       :body (json/encode transformed-request)
-                                       :timeout (:timeout config 30000)
-                                       :async? true
-                                       :as :json}
-                                      (when thread-pool
-                                        {:executor thread-pool})))
-            duration (- (System/currentTimeMillis) start-time)]
+            response   (http/post url
+                                  (conj {:headers (?assoc {"Content-Type" "application/json"
+                                                           "User-Agent"   "litellm-clj/1.0.0"}
+                                                          "Authorization" (:authorization config)
+                                                          "api-key" (:api-key config))
+                                         :body    (json/encode transformed-request)
+                                         :timeout (:timeout config 30000)
+                                         :async?  true
+                                         :as      :json}
+                                        (when thread-pool
+                                          {:executor thread-pool})))
+            duration   (- (System/currentTimeMillis) start-time)]
 
-         ;; Handle errors if response has error status
+        ;; Handle errors if response has error status
         (when (>= (:status @response) 400)
           (handle-error-response :azure @response))
 
@@ -203,12 +203,12 @@
   "Azure OpenAI-specific transform-response implementation"
   [provider-name response]
   (let [body (:body response)]
-    {:id (:id body)
-     :object (:object body)
+    {:id      (:id body)
+     :object  (:object body)
      :created (:created body)
-     :model (:model body)
+     :model   (:model body)
      :choices (map transform-choice (:choices body))
-     :usage (transform-usage (:usage body))}))
+     :usage   (transform-usage (:usage body))}))
 
 (defn supports-streaming-impl
   "Azure OpenAI-specific supports-streaming? implementation"
@@ -224,7 +224,7 @@
   "Azure OpenAI-specific get-rate-limits implementation"
   [provider-name]
   {:requests-per-minute 1000
-   :tokens-per-minute 120000})
+   :tokens-per-minute   120000})
 
 (defn health-check-impl
   "Azure OpenAI-specific health-check implementation"
@@ -232,21 +232,21 @@
   (try
     ;; Azure doesn't have a simple /models endpoint like OpenAI
     ;; We'll just try a minimal request to check connectivity
-    (let [url (build-chat-url config)
+    (let [url      (build-chat-url config)
           response (http/post url
-                              (conj {:headers 
+                              (conj {:headers
                                      (?assoc {"Content-Type" "application/json"}
                                              "Authorization" (:authorization config)
                                              "api-key" (:api-key config))
-                                     :body (json/encode {:messages [{:role "user" :content "test"}]
-                                                         :max_tokens 1})
+                                     :body    (json/encode {:messages   [{:role "user" :content "test"}]
+                                                            :max_tokens 1})
                                      :timeout 5000
-                                     :as :json}
+                                     :as      :json}
                                     (when thread-pool
                                       {:executor thread-pool})))]
       (= 200 (:status response)))
     (catch Exception e
-      (μ/log ::azure/health-check-failed :litellm/kind :lib :error (.getMessage e))
+      (mu/log ::health-check-failed :litellm/kind :lib :error (.getMessage e))
       false)))
 
 (defn get-cost-per-token-impl
@@ -262,32 +262,32 @@
   "Azure OpenAI-specific transform-streaming-chunk implementation"
   [provider-name chunk]
   (let [choice (first (:choices chunk))
-        delta (:delta choice)]
-    {:id (:id chunk)
-     :object (:object chunk)
+        delta  (:delta choice)]
+    {:id      (:id chunk)
+     :object  (:object chunk)
      :created (:created chunk)
-     :model (:model chunk)
-     :choices [{:index (:index choice)
-                :delta {:role (keyword (:role delta))
-                        :content (:content delta)}
+     :model   (:model chunk)
+     :choices [{:index         (:index choice)
+                :delta         {:role    (keyword (:role delta))
+                                :content (:content delta)}
                 :finish-reason (when (:finish_reason choice)
                                  (keyword (:finish_reason choice)))}]}))
 
 (defn make-streaming-request-impl
   "Azure OpenAI-specific make-streaming-request implementation"
   [provider-name transformed-request thread-pool config]
-  (let [url (build-chat-url config)
+  (let [url       (build-chat-url config)
         output-ch (streaming/create-stream-channel)]
     (go
       (try
         (let [response (http/post url
                                   {:headers (?assoc {"Content-Type" "application/json"
-                                                     "User-Agent" "litellm-clj/1.0.0"}
+                                                     "User-Agent"   "litellm-clj/1.0.0"}
                                                     "Authorization" (:authorization config)
                                                     "api-key" (:api-key config))
-                                   :body (json/encode transformed-request)
+                                   :body    (json/encode transformed-request)
                                    :timeout (:timeout config 30000)
-                                   :as :stream})]
+                                   :as      :stream})]
 
           ;; Handle errors
           (when (>= (:status response) 400)
@@ -298,7 +298,7 @@
 
           ;; Process streaming response
           (when (= 200 (:status response))
-            (let [body (:body response)
+            (let [body   (:body response)
                   reader (java.io.BufferedReader.
                           (java.io.InputStreamReader. body "UTF-8"))]
               (loop []
@@ -311,7 +311,7 @@
               (streaming/close-stream! output-ch))))
 
         (catch Exception e
-          (μ/log ::azure/streaming-error :litellm/kind :lib :error (.getMessage e))
+          (mu/log ::streaming-error :litellm/kind :lib :error (.getMessage e))
           (>! output-ch (streaming/stream-error "azure" (.getMessage e)))
           (streaming/close-stream! output-ch))))
 
@@ -330,7 +330,7 @@
 (defn transform-embedding-request-impl
   "Azure OpenAI-specific transform-embedding-request implementation"
   [provider-name request config]
-  (let [input (:input request)
+  (let [input       (:input request)
         transformed {:input (if (string? input) [input] input)}]
     (cond-> transformed
       (:encoding-format request) (assoc :encoding_format (name (:encoding-format request)))
@@ -344,20 +344,20 @@
     (errors/wrap-http-errors
      "azure"
      #(let [start-time (System/currentTimeMillis)
-            response (http/post url
-                                (conj {:headers (?assoc {"Content-Type" "application/json"
-                                                         "User-Agent" "litellm-clj/1.0.0"}
-                                                        "Authorization" (:authorization config)
-                                                        "api-key" (:api-key config))
-                                       :body (json/encode transformed-request)
-                                       :timeout (:timeout config 30000)
-                                       :async? true
-                                       :as :json}
-                                      (when thread-pool
-                                        {:executor thread-pool})))
-            duration (- (System/currentTimeMillis) start-time)]
+            response   (http/post url
+                                  (conj {:headers (?assoc {"Content-Type" "application/json"
+                                                           "User-Agent"   "litellm-clj/1.0.0"}
+                                                          "Authorization" (:authorization config)
+                                                          "api-key" (:api-key config))
+                                         :body    (json/encode transformed-request)
+                                         :timeout (:timeout config 30000)
+                                         :async?  true
+                                         :as      :json}
+                                        (when thread-pool
+                                          {:executor thread-pool})))
+            duration   (- (System/currentTimeMillis) start-time)]
 
-         ;; Handle errors if response has error status
+        ;; Handle errors if response has error status
         (when (>= (:status @response) 400)
           (handle-error-response :azure @response))
 
@@ -368,13 +368,13 @@
   [provider-name response]
   (let [body (:body response)]
     {:object (:object body)
-     :data (map (fn [item]
-                  {:object (:object item)
-                   :embedding (:embedding item)
-                   :index (:index item)})
-                (:data body))
-     :model (:model body)
-     :usage (transform-usage (:usage body))}))
+     :data   (map (fn [item]
+                    {:object    (:object item)
+                     :embedding (:embedding item)
+                     :index     (:index item)})
+                  (:data body))
+     :model  (:model body)
+     :usage  (transform-usage (:usage body))}))
 
 (defn supports-embeddings-impl
   "Azure OpenAI-specific supports-embeddings? implementation"
@@ -404,21 +404,21 @@
   "Test Azure OpenAI connection with a simple request"
   [config thread-pool telemetry]
   (let [validated-config (validate-config config)
-        test-request {:messages [{:role :user :content "Hello"}]
-                      :max-tokens 5}]
+        test-request     {:messages   [{:role :user :content "Hello"}]
+                          :max-tokens 5}]
     (try
-      (let [transformed (transform-request-impl :azure test-request validated-config)
-            response-future (make-request-impl :azure transformed thread-pool telemetry validated-config)
-            response @response-future
+      (let [transformed       (transform-request-impl :azure test-request validated-config)
+            response-future   (make-request-impl :azure transformed thread-pool telemetry validated-config)
+            response          @response-future
             standard-response (transform-response-impl :azure response)]
-        {:success true
-         :provider "azure"
-         :deployment (:deployment validated-config)
+        {:success     true
+         :provider    "azure"
+         :deployment  (:deployment validated-config)
          :response-id (:id standard-response)
-         :usage (:usage standard-response)})
+         :usage       (:usage standard-response)})
       (catch Exception e
-        {:success false
-         :provider "azure"
-         :error (.getMessage e)
+        {:success    false
+         :provider   "azure"
+         :error      (.getMessage e)
          :error-type (type e)}))))
 

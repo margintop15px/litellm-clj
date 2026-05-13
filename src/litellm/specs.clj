@@ -11,11 +11,11 @@
 (s/def ::name string?)
 (s/def ::tool-call-id string?)
 
-(s/def ::message 
+(s/def ::message
   (s/keys :req-un [::role ::content]
           :opt-un [::name ::tool-call-id]))
 
-(s/def ::messages 
+(s/def ::messages
   (s/coll-of ::message :min-count 1))
 
 ;; ============================================================================
@@ -115,11 +115,11 @@
 ;; Router Configuration
 ;; ============================================================================
 
-(s/def ::routing-strategy 
+(s/def ::routing-strategy
   #{:round-robin :usage-based :latency-based :random :weighted})
 
 (s/def ::fallback-model string?)
-(s/def ::fallbacks 
+(s/def ::fallbacks
   (s/map-of string? (s/coll-of ::fallback-model)))
 
 (s/def ::retry-attempts pos-int?)
@@ -163,7 +163,7 @@
 ;; ============================================================================
 
 (s/def ::system-config
-  (s/keys :opt-un [::providers ::router-config ::thread-pools-config 
+  (s/keys :opt-un [::providers ::router-config ::thread-pools-config
                    ::cache-config]))
 
 ;; ============================================================================

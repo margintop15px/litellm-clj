@@ -8,8 +8,8 @@
 
 (deftest test-transform-messages
   (testing "Transform messages to OpenAI format"
-    (let [messages [{:role :user :content "Hello"}
-                   {:role :assistant :content "Hi there"}]
+    (let [messages    [{:role :user :content "Hello"}
+                       {:role :assistant :content "Hi there"}]
           transformed (openai/transform-messages messages)]
       (is (= 2 (count transformed)))
       (is (= "user" (:role (first transformed))))
@@ -17,24 +17,24 @@
 
 (deftest test-transform-tools
   (testing "Transform tools to OpenAI format"
-    (let [tools [{:function {:name "get_weather"
-                            :description "Get weather"}}]
+    (let [tools       [{:function {:name        "get_weather"
+                                   :description "Get weather"}}]
           transformed (openai/transform-tools tools)]
       (is (= 1 (count transformed)))
       (is (= "get_weather" (get-in (first transformed) [:function :name]))))))
 
 (deftest test-transform-message
   (testing "Transform OpenAI message to standard format"
-    (let [message {:role "assistant" :content "Hello"}
+    (let [message     {:role "assistant" :content "Hello"}
           transformed (openai/transform-message message)]
       (is (= :assistant (:role transformed)))
       (is (= "Hello" (:content transformed))))))
 
 (deftest test-transform-usage
   (testing "Transform usage information"
-    (let [usage {:prompt_tokens 10
-                :completion_tokens 20
-                :total_tokens 30}
+    (let [usage       {:prompt_tokens     10
+                       :completion_tokens 20
+                       :total_tokens      30}
           transformed (openai/transform-usage usage)]
       (is (= 10 (:prompt-tokens transformed)))
       (is (= 20 (:completion-tokens transformed)))
@@ -42,10 +42,10 @@
 
 (deftest test-transform-request-basic
   (testing "Transform basic request"
-    (let [request {:model "gpt-4"
-                  :messages [{:role :user :content "Hello"}]
-                  :max-tokens 100}
-          config {}
+    (let [request     {:model      "gpt-4"
+                       :messages   [{:role :user :content "Hello"}]
+                       :max-tokens 100}
+          config      {}
           transformed (openai/transform-request-impl :openai request config)]
       (is (= "gpt-4" (:model transformed)))
       (is (= 100 (:max_completion_tokens transformed)))
@@ -81,10 +81,10 @@
 
 (deftest test-transform-request-gpt5-mini
   (testing "Transform request with GPT-5 mini model"
-    (let [request {:model "gpt-5-mini"
-                  :messages [{:role :user :content "Hello"}]
-                  :max-tokens 100}
-          config {}
+    (let [request     {:model      "gpt-5-mini"
+                       :messages   [{:role :user :content "Hello"}]
+                       :max-tokens 100}
+          config      {}
           transformed (openai/transform-request-impl :openai request config)]
       (is (= "gpt-5-mini" (:model transformed)))
       (is (= 100 (:max_completion_tokens transformed)))
@@ -106,9 +106,9 @@
 
 (deftest test-handle-error-response-429
   (testing "Handle 429 rate limit error"
-    (let [response {:status 429 
-                   :body {:error {:message "Rate limit exceeded"}}
-                   :headers {"retry-after" "60"}}]
+    (let [response {:status  429
+                    :body    {:error {:message "Rate limit exceeded"}}
+                    :headers {"retry-after" "60"}}]
       (is (thrown-with-msg? Exception #"Rate limit exceeded"
                             (openai/handle-error-response :openai response))))))
 
@@ -118,9 +118,9 @@
 
 (deftest test-transform-embedding-request-single-input
   (testing "Transform embedding request with single string input"
-    (let [request {:model "text-embedding-3-small"
-                  :input "Hello world"}
-          config {}
+    (let [request     {:model "text-embedding-3-small"
+                       :input "Hello world"}
+          config      {}
           transformed (openai/transform-embedding-request-impl :openai request config)]
       (is (= "text-embedding-3-small" (:model transformed)))
       (is (vector? (:input transformed)))
@@ -129,9 +129,9 @@
 
 (deftest test-transform-embedding-request-array-input
   (testing "Transform embedding request with array input"
-    (let [request {:model "text-embedding-3-small"
-                  :input ["Hello" "World"]}
-          config {}
+    (let [request     {:model "text-embedding-3-small"
+                       :input ["Hello" "World"]}
+          config      {}
           transformed (openai/transform-embedding-request-impl :openai request config)]
       (is (= "text-embedding-3-small" (:model transformed)))
       (is (vector? (:input transformed)))
@@ -141,12 +141,12 @@
 
 (deftest test-transform-embedding-request-with-optional-fields
   (testing "Transform embedding request with optional fields"
-    (let [request {:model "text-embedding-3-small"
-                  :input "Hello world"
-                  :encoding-format :float
-                  :dimensions 1536
-                  :user "test-user"}
-          config {}
+    (let [request     {:model           "text-embedding-3-small"
+                       :input           "Hello world"
+                       :encoding-format :float
+                       :dimensions      1536
+                       :user            "test-user"}
+          config      {}
           transformed (openai/transform-embedding-request-impl :openai request config)]
       (is (= "text-embedding-3-small" (:model transformed)))
       (is (= "float" (:encoding_format transformed)))
@@ -155,17 +155,17 @@
 
 (deftest test-transform-embedding-response
   (testing "Transform embedding response from OpenAI format"
-    (let [response {:body {:object "list"
-                          :data [{:object "embedding"
-                                 :embedding [0.1 0.2 0.3]
-                                 :index 0}
-                                {:object "embedding"
-                                 :embedding [0.4 0.5 0.6]
-                                 :index 1}]
-                          :model "text-embedding-3-small"
-                          :usage {:prompt_tokens 10
-                                 :completion_tokens 0
-                                 :total_tokens 10}}}
+    (let [response    {:body {:object "list"
+                              :data   [{:object    "embedding"
+                                        :embedding [0.1 0.2 0.3]
+                                        :index     0}
+                                       {:object    "embedding"
+                                        :embedding [0.4 0.5 0.6]
+                                        :index     1}]
+                              :model  "text-embedding-3-small"
+                              :usage  {:prompt_tokens     10
+                                       :completion_tokens 0
+                                       :total_tokens      10}}}
           transformed (openai/transform-embedding-response-impl :openai response)]
       (is (= "list" (:object transformed)))
       (is (= "text-embedding-3-small" (:model transformed)))
@@ -184,7 +184,7 @@
     (is (contains? openai/default-embedding-cost-map "text-embedding-3-small"))
     (is (contains? openai/default-embedding-cost-map "text-embedding-3-large"))
     (is (contains? openai/default-embedding-cost-map "text-embedding-ada-002"))
-    
+
     (testing "Costs have correct structure"
       (let [cost (get openai/default-embedding-cost-map "text-embedding-3-small")]
         (is (contains? cost :input))
@@ -198,23 +198,23 @@
 
 (deftest test-transform-response-format-json-object
   (testing "Transform json-object response format"
-    (let [rf {:type :json-object}
+    (let [rf     {:type :json-object}
           result (openai/transform-response-format rf)]
       (is (= "json_object" (:type result))))))
 
 (deftest test-transform-response-format-text
   (testing "Transform text response format"
-    (let [rf {:type :text}
+    (let [rf     {:type :text}
           result (openai/transform-response-format rf)]
       (is (= "text" (:type result))))))
 
 (deftest test-transform-response-format-json-schema
   (testing "Transform json-schema response format"
-    (let [schema {:type "object"
+    (let [schema {:type       "object"
                   :properties {:name {:type "string"}}
-                  :required ["name"]}
-          rf {:type :json-schema
-              :json-schema {:name "person" :schema schema :strict true}}
+                  :required   ["name"]}
+          rf     {:type        :json-schema
+                  :json-schema {:name "person" :schema schema :strict true}}
           result (openai/transform-response-format rf)]
       (is (= "json_schema" (:type result)))
       (is (= "person" (get-in result [:json_schema :name])))
@@ -223,27 +223,27 @@
 
 (deftest test-transform-request-with-json-object-format
   (testing "transform-request-impl includes response_format for json-object"
-    (let [request {:model "gpt-4o"
-                   :messages [{:role :user :content "Give me some JSON"}]
+    (let [request {:model           "gpt-4o"
+                   :messages        [{:role :user :content "Give me some JSON"}]
                    :response-format {:type :json-object}}
-          result (openai/transform-request-impl :openai request {})]
+          result  (openai/transform-request-impl :openai request {})]
       (is (= {:type "json_object"} (:response_format result))))))
 
 (deftest test-transform-request-with-json-schema-format
   (testing "transform-request-impl includes response_format for json-schema"
-    (let [schema {:type "object" :properties {:age {:type "integer"}}}
-          request {:model "gpt-4o"
-                   :messages [{:role :user :content "Give me some JSON"}]
-                   :response-format {:type :json-schema
+    (let [schema  {:type "object" :properties {:age {:type "integer"}}}
+          request {:model           "gpt-4o"
+                   :messages        [{:role :user :content "Give me some JSON"}]
+                   :response-format {:type        :json-schema
                                      :json-schema {:name "user" :schema schema}}}
-          result (openai/transform-request-impl :openai request {})]
+          result  (openai/transform-request-impl :openai request {})]
       (is (= "json_schema" (get-in result [:response_format :type])))
       (is (= "user" (get-in result [:response_format :json_schema :name])))
       (is (= schema (get-in result [:response_format :json_schema :schema]))))))
 
 (deftest test-transform-request-without-response-format
   (testing "transform-request-impl does not add response_format when absent"
-    (let [request {:model "gpt-4o"
+    (let [request {:model    "gpt-4o"
                    :messages [{:role :user :content "Hello"}]}
-          result (openai/transform-request-impl :openai request {})]
+          result  (openai/transform-request-impl :openai request {})]
       (is (nil? (:response_format result))))))

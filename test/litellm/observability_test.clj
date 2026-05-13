@@ -1,23 +1,41 @@
 (ns litellm.observability-test
-  (:require [clojure.test :refer [deftest testing is use-fixtures]]
-            [com.brunobonacci.mulog :as μ]
-            [litellm.observability :as obs]))
+  (:require [clojure.test :refer [deftest testing is]]
+            [com.brunobonacci.mulog :as mu]
+            [com.brunobonacci.mulog.buffer :as mbuf]
+            [litellm.core :as litellm]
+            [litellm.observability :as obs]
+            [litellm.providers.core :as providers])
+  (:import [com.brunobonacci.mulog.publisher PPublisher]))
 
 ;; ============================================================================
 ;; Test helpers
 ;; ============================================================================
 
+(defn- inline-publisher
+  "Build a PPublisher that drains items into `events-atom`."
+  [events-atom]
+  (let [buf (mbuf/agent-buffer 10000)]
+    (reify PPublisher
+      (agent-buffer  [_] buf)
+      (publish-delay [_] 10)
+      (publish [_ buffer]
+        (doseq [item (map second (mbuf/items buffer))]
+          (swap! events-atom conj item))
+        (mbuf/clear buffer)))))
+
 (defmacro with-captured-events
   "Runs body with an inline mulog publisher that collects all emitted events
-  into `events-atom`. Stops the publisher after body completes."
+  into `events-atom`. Waits for the publisher to drain, then stops it."
   [events-atom & body]
-  `(let [stop-fn# (μ/start-publisher!
-                    {:type :inline
-                     :fn   (fn [events#]
-                             (doseq [e# events#]
-                               (swap! ~events-atom conj e#)))})]
+  `(let [stop-fn# (mu/start-publisher!
+                    {:type      :inline
+                     :publisher (inline-publisher ~events-atom)})]
      (try
        ~@body
+       ;; mulog dispatch runs every PUBLISH-INTERVAL (200 ms) and the
+       ;; publisher then drains on its own publish-delay (also clamped to 200 ms),
+       ;; so worst-case latency before publish() is called is ~400 ms.
+       (Thread/sleep 500)
        (finally (stop-fn#)))))
 
 (defn events-of-type
@@ -46,9 +64,9 @@
 (def ^:private fake-response
   {:id      "chatcmpl-test123"
    :model   "gpt-4o"
-   :choices [{:index        0
+   :choices [{:index         0
               :finish-reason :stop
-              :message      {:role :assistant :content "Hello, world!"}}]
+              :message       {:role :assistant :content "Hello, world!"}}]
    :usage   {:prompt-tokens 10 :completion-tokens 5 :total-tokens 15}})
 
 (deftest test-instrument-completion-event-shape
@@ -56,13 +74,13 @@
     (with-captured-events events
       (obs/instrument-completion
        :openai "gpt-4o"
-       {:messages [{:role :user :content "Hi"}]
+       {:messages    [{:role :user :content "Hi"}]
         :temperature 0.7
-        :max-tokens 100}
+        :max-tokens  100}
        (fn [] fake-response)
        {:capture-content? false}))
 
-    (let [completion-events (events-of-type @events ::obs/gen-ai/completion)]
+    (let [completion-events (events-of-type @events :gen-ai/completion)]
       (testing "exactly one completion event is emitted"
         (is (= 1 (count completion-events))))
 
@@ -78,15 +96,15 @@
 
         (testing "request attributes"
           (is (= "gpt-4o" (:gen_ai.request.model e)))
-          (is (= 0.7      (:gen_ai.request.temperature e)))
-          (is (= 100      (:gen_ai.request.max_tokens e))))
+          (is (= 0.7 (:gen_ai.request.temperature e)))
+          (is (= 100 (:gen_ai.request.max_tokens e))))
 
         (testing "response attributes are populated (volatile pattern works)"
           (is (= "chatcmpl-test123" (:gen_ai.response.id e)))
-          (is (= "gpt-4o"           (:gen_ai.response.model e)))
-          (is (= 10                 (:gen_ai.usage.input_tokens e)))
-          (is (= 5                  (:gen_ai.usage.output_tokens e)))
-          (is (= [:stop]            (:gen_ai.response.finish_reasons e))))
+          (is (= "gpt-4o" (:gen_ai.response.model e)))
+          (is (= 10 (:gen_ai.usage.input_tokens e)))
+          (is (= 5 (:gen_ai.usage.output_tokens e)))
+          (is (= [:stop] (:gen_ai.response.finish_reasons e))))
 
         (testing "content is absent when capture-content? false"
           (is (nil? (:gen_ai.input.messages e)))
@@ -99,7 +117,7 @@
 
 (deftest test-instrument-completion-content-capture
   (testing "messages are included when capture-content? true"
-    (let [events  (atom [])
+    (let [events   (atom [])
           messages [{:role :user :content "Hi"}]]
       (with-captured-events events
         (obs/instrument-completion
@@ -107,7 +125,7 @@
          {:messages messages}
          (fn [] fake-response)
          {:capture-content? true}))
-      (let [e (first (events-of-type @events ::obs/gen-ai/completion))]
+      (let [e (first (events-of-type @events :gen-ai/completion))]
         (is (some? (:gen_ai.input.messages e)))
         (is (some? (:gen_ai.output.messages e)))))))
 
@@ -121,7 +139,7 @@
            (fn [] (throw (ex-info "API error" {:status 429})))
            {})
           (catch Exception _)))
-      (let [e (first (events-of-type @events ::obs/gen-ai/completion))]
+      (let [e (first (events-of-type @events :gen-ai/completion))]
         (is (= :error (:mulog/outcome e)))))))
 
 ;; ============================================================================
@@ -141,7 +159,7 @@
        {:input "Hello world"}
        (fn [] fake-embedding-response)))
 
-    (let [embedding-events (events-of-type @events ::obs/gen-ai/embedding)]
+    (let [embedding-events (events-of-type @events :gen-ai/embedding)]
       (testing "one embedding event is emitted"
         (is (= 1 (count embedding-events))))
 
@@ -163,7 +181,7 @@
       (with-captured-events events
         (obs/with-observation {:session-id "sess-1" :user-id "u-1"}
           :done))
-      (let [obs-events (events-of-type @events ::obs/litellm/observation)]
+      (let [obs-events (events-of-type @events :litellm/observation)]
         (is (= 1 (count obs-events)))
         (is (= :llm (:litellm/kind (first obs-events))))))))
 
@@ -177,8 +195,8 @@
            (fn [] fake-response)
            {})))
 
-      (let [obs-event        (first (events-of-type @events ::obs/litellm/observation))
-            completion-event (first (events-of-type @events ::obs/gen-ai/completion))]
+      (let [obs-event        (first (events-of-type @events :litellm/observation))
+            completion-event (first (events-of-type @events :gen-ai/completion))]
         (testing "observation span exists"
           (is (some? obs-event)))
         (testing "completion span's parent-trace is the observation trace"
@@ -194,10 +212,20 @@
            :anthropic "claude-3-5-sonnet-20241022" {:messages []}
            (fn [] (assoc fake-response :model "claude-3-5-sonnet-20241022"))
            {})))
-      ;; Context keys are in the events' local context
-      (let [comp-event (first (events-of-type @events ::obs/gen-ai/completion))]
-        (is (= "sess-abc"  (:langfuse.session_id comp-event)))
-        (is (= "user-xyz"  (:langfuse.user_id comp-event)))))))
+      (let [comp-event (first (events-of-type @events :gen-ai/completion))]
+        (is (= "sess-abc" (:langfuse.session_id comp-event)))
+        (is (= "user-xyz" (:langfuse.user_id comp-event)))))))
+
+(deftest test-with-observation-name-attribute
+  (testing ":name attribute maps to :langfuse.trace.name"
+    (let [events (atom [])]
+      (with-captured-events events
+        (obs/with-observation {:session-id "name-test" :name "weather-agent"}
+          :done))
+      (let [obs-event (->> (events-of-type @events :litellm/observation)
+                           (filter #(= "name-test" (:langfuse.session_id %)))
+                           first)]
+        (is (= "weather-agent" (:langfuse.trace.name obs-event)))))))
 
 ;; ============================================================================
 ;; capture-context for async flows
@@ -213,15 +241,22 @@
       (with-captured-events events
         (obs/with-observation {:session-id "async-sess"}
           (let [ctx (obs/capture-context)]
-            ;; Simulate async boundary
             @(future
-               (μ/with-context ctx
+               (mu/with-context ctx
                  (obs/instrument-completion
                   :openai "gpt-4o" {:messages []}
                   (fn [] fake-response)
                   {}))))))
-      (let [obs-event        (first (events-of-type @events ::obs/litellm/observation))
-            completion-event (first (events-of-type @events ::obs/gen-ai/completion))]
+      ;; Filter by the unique session id to avoid picking up
+      ;; :gen-ai/completion events leaked from other tests via
+      ;; mulog's global event buffer.
+      (let [obs-event        (->> (events-of-type @events :litellm/observation)
+                                  (filter #(= "async-sess" (:langfuse.session_id %)))
+                                  first)
+            completion-event (->> (events-of-type @events :gen-ai/completion)
+                                  (filter #(= (:mulog/trace-id obs-event)
+                                              (:mulog/parent-trace %)))
+                                  first)]
         (testing "async completion is child of observation span"
           (is (= (:mulog/trace-id obs-event)
                  (:mulog/parent-trace completion-event))))
@@ -234,16 +269,74 @@
 
 (deftest test-lib-events-have-kind
   (testing "all emitted lib events carry :litellm/kind :lib"
-    ;; We verify the design by checking a known lib event manually
-    (let [events (atom [])
-          stop   (μ/start-publisher! {:type :inline
-                                      :fn   (fn [es]
-                                              (doseq [e es]
-                                                (swap! events conj e)))})]
-      (μ/log ::test/lib-event :litellm/kind :lib :msg "test")
-      (stop)
-      (let [e (first @events)]
+    (let [events (atom [])]
+      (with-captured-events events
+        (mu/log ::lib-event :litellm/kind :lib :msg "test"))
+      (let [e (first (events-of-type @events ::lib-event))]
         (is (= :lib (:litellm/kind e)))))))
+
+;; ============================================================================
+;; Integration: litellm.core/completion routes through instrument-completion
+;; ============================================================================
+
+(deftest test-litellm-completion-emits-gen-ai-event
+  (testing "litellm.core/completion wraps the provider call with instrument-completion"
+    (let [events       (atom [])
+          stub-id      "stubbed-id"
+          ;; Provider-multimethod stubs so we don't touch the network.
+          orig-transform-req  (get-method providers/transform-request :openai)
+          orig-make-req       (get-method providers/make-request :openai)
+          orig-transform-resp (get-method providers/transform-response :openai)
+          orig-validate-req   providers/validate-request]
+      (try
+        (defmethod providers/transform-request :openai [_ req _] req)
+        (defmethod providers/make-request :openai [_ _ _ _ _]
+          (future {:id      stub-id
+                   :model   "gpt-4o"
+                   :choices [{:index 0
+                              :message {:role :assistant :content "stubbed"}
+                              :finish_reason "stop"}]
+                   :usage   {:prompt_tokens 7 :completion_tokens 4 :total_tokens 11}}))
+        (defmethod providers/transform-response :openai [_ resp]
+          {:id      (:id resp)
+           :model   (:model resp)
+           :choices (mapv (fn [c]
+                            {:index         (:index c)
+                             :message       (:message c)
+                             :finish-reason (keyword (:finish_reason c))})
+                          (:choices resp))
+           :usage   {:prompt-tokens     (-> resp :usage :prompt_tokens)
+                     :completion-tokens (-> resp :usage :completion_tokens)
+                     :total-tokens      (-> resp :usage :total_tokens)}})
+        (alter-var-root #'providers/validate-request (constantly (fn [_ _] :ok)))
+
+        (with-captured-events events
+          (obs/with-observation {:session-id "integration-test"}
+            (litellm/completion :openai "gpt-4o"
+                                {:messages [{:role :user :content "hi"}]}
+                                {:api-key "stub"})))
+
+        (let [completion-event (->> (events-of-type @events :gen-ai/completion)
+                                    (filter #(= "integration-test" (:langfuse.session_id %)))
+                                    first)]
+          (testing "an event is emitted for the full call path"
+            (is (some? completion-event)))
+          (testing "request fields are captured"
+            (is (= "openai" (:gen_ai.system completion-event)))
+            (is (= "gpt-4o" (:gen_ai.request.model completion-event))))
+          (testing "response fields are populated from the stubbed response"
+            (is (= stub-id (:gen_ai.response.id completion-event)))
+            (is (= 7 (:gen_ai.usage.input_tokens completion-event)))
+            (is (= 4 (:gen_ai.usage.output_tokens completion-event)))
+            (is (= [:stop] (:gen_ai.response.finish_reasons completion-event)))))
+        (finally
+          (when orig-transform-req
+            (.addMethod ^clojure.lang.MultiFn providers/transform-request :openai orig-transform-req))
+          (when orig-make-req
+            (.addMethod ^clojure.lang.MultiFn providers/make-request :openai orig-make-req))
+          (when orig-transform-resp
+            (.addMethod ^clojure.lang.MultiFn providers/transform-response :openai orig-transform-resp))
+          (alter-var-root #'providers/validate-request (constantly orig-validate-req)))))))
 
 ;; ============================================================================
 ;; observe-stream
@@ -252,17 +345,15 @@
 (deftest test-observe-stream-emits-span
   (testing "observe-stream emits a completion-stream span with content"
     (let [events (atom [])
-          ;; Create a fake channel with pre-loaded chunks
           ch     (clojure.core.async/chan 10)]
-      ;; Pre-load a chunk and close the channel
       (clojure.core.async/put! ch {:choices [{:delta {:content "hello "} :finish-reason nil}]})
-      (clojure.core.async/put! ch {:choices [{:delta {:content "world"}  :finish-reason :stop}]})
+      (clojure.core.async/put! ch {:choices [{:delta {:content "world"} :finish-reason :stop}]})
       (clojure.core.async/close! ch)
 
       (with-captured-events events
         (obs/observe-stream ch :openai "gpt-4o" {:messages [{:role :user :content "Hi"}]}))
 
-      (let [stream-events (events-of-type @events ::obs/gen-ai/completion-stream)]
+      (let [stream-events (events-of-type @events :gen-ai/completion-stream)]
         (testing "one stream event emitted"
           (is (= 1 (count stream-events))))
         (let [e (first stream-events)]

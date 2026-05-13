@@ -255,12 +255,12 @@ Add `com.brunobonacci/mulog-opentelemetry` to your app, configure it to point at
 with `with-observation` — all completions appear as linked traces automatically:
 
 ```clojure
-(require '[com.brunobonacci.mulog :as μ])
+(require '[com.brunobonacci.mulog :as mu])
 (require '[litellm.observability :as obs])
 (require '[litellm.core :as litellm])
 
 ;; Start publisher (add mulog-opentelemetry to your app's deps)
-(μ/start-publisher!
+(mu/start-publisher!
   {:type    :opentelemetry
    :url     "https://cloud.langfuse.com/api/public/otel"
    :headers {"Authorization" (str "Basic " (b64 "pk-lf-...:sk-lf-..."))}

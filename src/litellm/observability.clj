@@ -19,14 +19,14 @@
   (require '[litellm.core :as litellm])
 
   ;; Start a console publisher for development
-  (require '[com.brunobonacci.mulog :as μ])
-  (μ/start-publisher! {:type :console})
+  (require '[com.brunobonacci.mulog :as mu])
+  (mu/start-publisher! {:type :console})
 
   ;; Wrap your agent logic — all completions become child spans
   (obs/with-observation {:session-id \"sess-123\" :user-id \"u-456\"}
     (litellm/completion :openai \"gpt-4o\" {:messages [...]} config))
   ```"
-  (:require [com.brunobonacci.mulog :as μ]
+  (:require [com.brunobonacci.mulog :as mu]
             [cheshire.core :as json]
             [litellm.streaming :as streaming]))
 
@@ -72,7 +72,7 @@
   (obs/with-observation {:session-id \"s-1\"}
     (let [ctx (obs/capture-context)]
       (async/go
-        (μ/with-context ctx
+        (mu/with-context ctx
           (<! (async/thread (litellm/completion ...)))))))
   ```
 
@@ -80,10 +80,10 @@
   ```clojure
   (obs/with-observation {:session-id \"s-1\"}
     (let [ctx (obs/capture-context)]
-      @(future (μ/with-context ctx (litellm/completion ...)))))
+      @(future (mu/with-context ctx (litellm/completion ...)))))
   ```"
   []
-  (μ/local-context))
+  (or (mu/local-context) {}))
 
 ;; ============================================================================
 ;; User-facing trace wrapper
@@ -102,7 +102,7 @@
   - any other keys are forwarded as-is into the mulog context
 
   For async flows (core.async go blocks, futures), call `(capture-context)`
-  **before** the async boundary and restore with `μ/with-context` inside.
+  **before** the async boundary and restore with `mu/with-context` inside.
 
   Example:
   ```clojure
@@ -113,13 +113,13 @@
       r2))
   ```"
   [attrs & body]
-  `(μ/with-context
+  `(mu/with-context
      (merge (dissoc ~attrs :session-id :user-id :name)
             (cond-> {:litellm/kind :llm}
               (:session-id ~attrs) (assoc :langfuse.session_id (:session-id ~attrs))
-              (:user-id ~attrs)    (assoc :langfuse.user_id    (:user-id ~attrs))
-              (:name ~attrs)       (assoc :langfuse.trace.name (:name ~attrs))))
-     (μ/trace ::litellm/observation
+              (:user-id ~attrs) (assoc :langfuse.user_id (:user-id ~attrs))
+              (:name ~attrs) (assoc :langfuse.trace.name (:name ~attrs))))
+     (mu/trace :litellm/observation
        [:litellm/kind :llm]
        ~@body)))
 
@@ -128,67 +128,60 @@
 ;; ============================================================================
 
 (defn ^:no-doc instrument-completion
-  "Wraps a completion call in a `μ/trace` span with OpenTelemetry GenAI
+  "Wraps a completion call in a `mu/trace` span with OpenTelemetry GenAI
   semantic-convention attributes.
 
-  Both request and response attributes land on the **same** span: mulog
-  evaluates the pairs vector *after* the body completes, so the `volatile!`
-  capturing the response is guaranteed to be populated by the time pairs
-  are read.
+  Request-side fields land on the trace via `:pairs` (evaluated before
+  body). Response-side fields land via `:capture` (evaluated after body
+  completes, with the response value).
 
   `opts` keys:
   - `:capture-content?` — include message content in the event (default false)"
   [provider-name model request completion-fn opts]
-  (let [resp (volatile! nil)]
-    (μ/trace ::gen-ai/completion
-      ;; Pairs evaluated after body — volatile is safe here (single-threaded)
-      [:litellm/kind                  :llm
-       :gen_ai.system                 (name provider-name)
-       :gen_ai.operation.name         "chat"
-       :gen_ai.request.model          model
-       :gen_ai.request.max_tokens     (:max-tokens request)
-       :gen_ai.request.temperature    (:temperature request)
-       :gen_ai.request.top_p          (:top-p request)
-       :gen_ai.response.id            (:id @resp)
-       :gen_ai.response.model         (:model @resp)
-       :gen_ai.usage.input_tokens     (-> @resp :usage :prompt-tokens)
-       :gen_ai.usage.output_tokens    (-> @resp :usage :completion-tokens)
-       :gen_ai.response.finish_reasons (mapv :finish-reason (:choices @resp))
-       :gen_ai.input.messages         (when (:capture-content? opts)
-                                        (json/encode (:messages request)))
-       :gen_ai.output.messages        (when (:capture-content? opts)
-                                        (some->> (:choices @resp)
-                                                 (mapv :message)
-                                                 json/encode))]
-      (let [result (completion-fn)]
-        (vreset! resp result)
-        result))))
+  (mu/trace :gen-ai/completion
+    {:pairs   [:litellm/kind               :llm
+               :gen_ai.system              (name provider-name)
+               :gen_ai.operation.name      "chat"
+               :gen_ai.request.model       model
+               :gen_ai.request.max_tokens  (:max-tokens request)
+               :gen_ai.request.temperature (:temperature request)
+               :gen_ai.request.top_p       (:top-p request)
+               :gen_ai.input.messages      (when (:capture-content? opts)
+                                             (json/encode (:messages request)))]
+     :capture (fn [resp]
+                (cond-> {:gen_ai.response.id             (:id resp)
+                         :gen_ai.response.model          (:model resp)
+                         :gen_ai.usage.input_tokens      (-> resp :usage :prompt-tokens)
+                         :gen_ai.usage.output_tokens     (-> resp :usage :completion-tokens)
+                         :gen_ai.response.finish_reasons (mapv :finish-reason (:choices resp))}
+                  (:capture-content? opts)
+                  (assoc :gen_ai.output.messages
+                         (some->> (:choices resp) (mapv :message) json/encode))))}
+    (completion-fn)))
 
 ;; ============================================================================
 ;; Internal instrumentation — embedding
 ;; ============================================================================
 
 (defn ^:no-doc instrument-embedding
-  "Wraps an embedding call in a `μ/trace` span with GenAI attributes."
+  "Wraps an embedding call in a `mu/trace` span with GenAI attributes."
   [provider-name model request embedding-fn]
-  (let [resp (volatile! nil)]
-    (μ/trace ::gen-ai/embedding
-      [:litellm/kind              :llm
-       :gen_ai.system             (name provider-name)
-       :gen_ai.operation.name     "embeddings"
-       :gen_ai.request.model      model
-       :gen_ai.usage.input_tokens (-> @resp :usage :prompt-tokens)
-       :gen_ai.response.embedding_count (some-> @resp :data count)]
-      (let [result (embedding-fn)]
-        (vreset! resp result)
-        result))))
+  (mu/trace :gen-ai/embedding
+    {:pairs   [:litellm/kind          :llm
+               :gen_ai.system         (name provider-name)
+               :gen_ai.operation.name "embeddings"
+               :gen_ai.request.model  model]
+     :capture (fn [resp]
+                {:gen_ai.usage.input_tokens       (-> resp :usage :prompt-tokens)
+                 :gen_ai.response.embedding_count (some-> resp :data count)})}
+    (embedding-fn)))
 
 ;; ============================================================================
 ;; Streaming observability
 ;; ============================================================================
 
 (defn observe-stream
-  "Collects a streaming channel and emits a `::gen-ai/completion-stream` span.
+  "Collects a streaming channel and emits a `:gen-ai/completion-stream` span.
 
   Because token counts are not available in streaming chunks, only
   `:gen_ai.output.content` is captured on the response side. Use non-streaming
@@ -204,15 +197,13 @@
     (obs/observe-stream ch :openai \"gpt-4o\" {:messages [...]}))
   ```"
   [ch provider-name model request]
-  (let [resp (volatile! nil)]
-    (μ/trace ::gen-ai/completion-stream
-      [:litellm/kind          :llm
-       :gen_ai.system         (name provider-name)
-       :gen_ai.operation.name "chat"
-       :gen_ai.request.model  model
-       :gen_ai.request.max_tokens  (:max-tokens request)
-       :gen_ai.request.temperature (:temperature request)
-       :gen_ai.output.content      (:content @resp)]
-      (let [result (streaming/collect-stream ch)]
-        (vreset! resp result)
-        result))))
+  (mu/trace :gen-ai/completion-stream
+    {:pairs   [:litellm/kind               :llm
+               :gen_ai.system              (name provider-name)
+               :gen_ai.operation.name      "chat"
+               :gen_ai.request.model       model
+               :gen_ai.request.max_tokens  (:max-tokens request)
+               :gen_ai.request.temperature (:temperature request)]
+     :capture (fn [result]
+                {:gen_ai.output.content (:content result)})}
+    (streaming/collect-stream ch)))

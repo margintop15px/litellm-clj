@@ -11,7 +11,7 @@
 ;; Usage:
 ;;   clojure -M:dev -i examples/11_observability_example.clj
 
-(require '[com.brunobonacci.mulog :as μ])
+(require '[com.brunobonacci.mulog :as mu])
 (require '[litellm.observability :as obs])
 (require '[litellm.core :as litellm])
 
@@ -21,7 +21,7 @@
 
 ;; For development: print all events to the console
 (def stop-console-publisher!
-  (μ/start-publisher! {:type :console}))
+  (mu/start-publisher! {:type :console}))
 
 (println "Console publisher started. Events will print below.\n")
 
@@ -36,14 +36,14 @@
 (obs/with-observation {:session-id "sess-demo-1"
                        :user-id    "user-42"
                        :name       "basic-example"}
-  ;; This completion will emit a ::gen-ai/completion event with:
+  ;; This completion will emit a :gen-ai/completion event with:
   ;;   gen_ai.system = "openai", gen_ai.request.model = "gpt-4o-mini"
   ;;   gen_ai.usage.input_tokens, gen_ai.usage.output_tokens
   ;;   mulog/parent-trace → the observation span
   (when (System/getenv "OPENAI_API_KEY")
     (let [response (litellm/completion
                     :openai "gpt-4o-mini"
-                    {:messages [{:role :user :content "Say 'observability works' and nothing else."}]
+                    {:messages   [{:role :user :content "Say 'observability works' and nothing else."}]
                      :max-tokens 10}
                     {:api-key (System/getenv "OPENAI_API_KEY")})]
       (println "Response:" (get-in response [:choices 0 :message :content])))))
@@ -74,25 +74,25 @@
                                                  :required   ["location"]}}}
 
           ;; First completion — model decides to call a tool
-          r1 (litellm/completion
-              :openai "gpt-4o-mini"
-              {:messages [{:role :user :content "What's the weather in Paris?"}]
-               :tools    [weather-tool]
-               :max-tokens 100}
-              {:api-key (System/getenv "OPENAI_API_KEY")})
+          r1           (litellm/completion
+                        :openai "gpt-4o-mini"
+                        {:messages   [{:role :user :content "What's the weather in Paris?"}]
+                         :tools      [weather-tool]
+                         :max-tokens 100}
+                        {:api-key (System/getenv "OPENAI_API_KEY")})
 
-          tool-result (mock-weather-tool-call r1)
+          tool-result  (mock-weather-tool-call r1)
 
           ;; Second completion — model responds with tool result in context
-          r2 (litellm/completion
-              :openai "gpt-4o-mini"
-              {:messages [{:role :user :content "What's the weather in Paris?"}
-                          (get-in r1 [:choices 0 :message])
-                          {:role         :tool
-                           :tool-call-id (get-in r1 [:choices 0 :message :tool-calls 0 :id] "call_demo")
-                           :content      tool-result}]
-               :max-tokens 100}
-              {:api-key (System/getenv "OPENAI_API_KEY")})]
+          r2           (litellm/completion
+                        :openai "gpt-4o-mini"
+                        {:messages   [{:role :user :content "What's the weather in Paris?"}
+                                      (get-in r1 [:choices 0 :message])
+                                      {:role         :tool
+                                       :tool-call-id (get-in r1 [:choices 0 :message :tool-calls 0 :id] "call_demo")
+                                       :content      tool-result}]
+                         :max-tokens 100}
+                        {:api-key (System/getenv "OPENAI_API_KEY")})]
 
       ;; In Langfuse these two completions appear as siblings under the observation trace:
       ;; Trace: weather-agent (sess-demo-2)
@@ -116,10 +116,10 @@
       @(future
          ;; Restore context inside the future — the completion span will be a
          ;; child of the observation span just as if it ran synchronously.
-         (μ/with-context ctx
+         (mu/with-context ctx
            (let [resp (litellm/completion
                        :openai "gpt-4o-mini"
-                       {:messages [{:role :user :content "Reply with: async works"}]
+                       {:messages   [{:role :user :content "Reply with: async works"}]
                         :max-tokens 10}
                        {:api-key (System/getenv "OPENAI_API_KEY")})]
              (println "Async response:" (get-in resp [:choices 0 :message :content]))))))))
@@ -137,11 +137,11 @@
   (when (System/getenv "OPENAI_API_KEY")
     (let [ch (litellm/completion
               :openai "gpt-4o-mini"
-              {:messages [{:role :user :content "Count to 3, one word per line."}]
-               :stream   true
+              {:messages   [{:role :user :content "Count to 3, one word per line."}]
+               :stream     true
                :max-tokens 20}
               {:api-key (System/getenv "OPENAI_API_KEY")})]
-      ;; observe-stream collects the channel and emits a ::gen-ai/completion-stream span
+      ;; observe-stream collects the channel and emits a :gen-ai/completion-stream span
       (let [{:keys [content]} (obs/observe-stream ch :openai "gpt-4o-mini"
                                                   {:messages [{:role :user :content "Count to 3"}]})]
         (println "Streamed content:" content)))))
@@ -158,11 +158,11 @@
 (println "
 ;; In production, replace the console publisher with the OTel publisher:
 ;;
-;; (require '[com.brunobonacci.mulog :as μ])
+;; (require '[com.brunobonacci.mulog :as mu])
 ;; (require '[litellm.observability :as obs])
 ;;
 ;; (def stop!
-;;   (μ/start-publisher!
+;;   (mu/start-publisher!
 ;;     {:type :multi
 ;;      :publishers
 ;;      [{:type    :opentelemetry

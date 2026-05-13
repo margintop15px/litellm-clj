@@ -24,7 +24,7 @@
   (testing "Extract content from chunk"
     (let [chunk {:choices [{:delta {:content "Hello"}}]}]
       (is (= "Hello" (streaming/extract-content chunk)))))
-  
+
   (testing "Extract nil from error chunk"
     (let [chunk {:type :error}]
       (is (nil? (streaming/extract-content chunk))))))
@@ -36,19 +36,19 @@
         (>! test-ch {:choices [{:delta {:content "Hello"}}]})
         (>! test-ch {:choices [{:delta {:content " World"}}]})
         (close! test-ch))
-      
+
       (let [result (streaming/collect-stream test-ch)]
         (is (= "Hello World" (:content result)))
         (is (= 2 (count (:chunks result))))))))
 
 (deftest test-parse-sse-line
   (testing "Parse valid SSE line"
-    (let [parsed (streaming/parse-sse-line 
-                   "data: {\"test\":\"value\"}" 
-                   cheshire.core/decode)]
+    (let [parsed (streaming/parse-sse-line
+                  "data: {\"test\":\"value\"}"
+                  cheshire.core/decode)]
       (is (some? parsed))
       (is (= {:test "value"} parsed))))
-  
+
   (testing "Skip [DONE] marker"
     (let [parsed (streaming/parse-sse-line "data: [DONE]" cheshire.core/decode)]
       (is (nil? parsed)))))

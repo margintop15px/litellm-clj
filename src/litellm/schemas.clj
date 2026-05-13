@@ -14,11 +14,11 @@
 (def Message
   [:map
    [:role Role]
-   [:content {:optional true} :string]  ; Allow nil for assistant messages with tool-calls
+   [:content {:optional true} :string] ; Allow nil for assistant messages with tool-calls
    [:name {:optional true} :string]
    [:tool-call-id {:optional true} :string]
-   [:reasoning-content {:optional true} :string]  ; Reasoning/thinking content from models
-   [:thinking-blocks {:optional true} [:vector :map]]])  ; Thinking blocks (Anthropic-specific)
+   [:reasoning-content {:optional true} :string] ; Reasoning/thinking content from models
+   [:thinking-blocks {:optional true} [:vector :map]]]) ; Thinking blocks (Anthropic-specific)
 
 (def Messages
   [:vector {:min 1} Message])
@@ -330,7 +330,7 @@
   [request]
   (when-not (valid-request? request)
     (throw (ex-info "Invalid request"
-                    {:type :validation-error
+                    {:type   :validation-error
                      :errors (explain-request request)})))
   request)
 
@@ -339,7 +339,7 @@
   [response]
   (when-not (valid-response? response)
     (throw (ex-info "Invalid response"
-                    {:type :validation-error
+                    {:type   :validation-error
                      :errors (explain-response response)})))
   response)
 
@@ -348,7 +348,7 @@
   [config]
   (when-not (valid-config? config)
     (throw (ex-info "Invalid configuration"
-                    {:type :validation-error
+                    {:type   :validation-error
                      :errors (explain-config config)})))
   config)
 
@@ -357,7 +357,7 @@
   [request]
   (when-not (valid-embedding-request? request)
     (throw (ex-info "Invalid embedding request"
-                    {:type :validation-error
+                    {:type   :validation-error
                      :errors (explain-embedding-request request)})))
   request)
 
@@ -366,7 +366,7 @@
   [response]
   (when-not (valid-embedding-response? response)
     (throw (ex-info "Invalid embedding response"
-                    {:type :validation-error
+                    {:type   :validation-error
                      :errors (explain-embedding-response response)})))
   response)
 
@@ -376,13 +376,13 @@
 
 (def string-transformer
   (mt/transformer
-    mt/string-transformer
-    mt/strip-extra-keys-transformer))
+   mt/string-transformer
+   mt/strip-extra-keys-transformer))
 
 (def json-transformer
   (mt/transformer
-    mt/json-transformer
-    mt/strip-extra-keys-transformer))
+   mt/json-transformer
+   mt/strip-extra-keys-transformer))
 
 (defn transform-request
   "Transform and validate request from external format"

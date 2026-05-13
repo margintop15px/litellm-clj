@@ -1,6 +1,6 @@
 (ns litellm.wrappers
   "Utility wrappers for provider calls with fallback, retry, timeout, and cost-tracking"
-  (:require [com.brunobonacci.mulog :as μ]
+  (:require [com.brunobonacci.mulog :as mu]
             [litellm.config :as config]
             [litellm.providers.core :as providers]))
 
@@ -23,32 +23,32 @@
   [config-names request-map completion-fn]
   (when (empty? config-names)
     (throw (ex-info "No fallback configs provided" {:config-names config-names})))
-  
+
   (loop [remaining config-names
-         errors []]
+         errors    []]
     (if (empty? remaining)
       ;; All configs failed
       (throw (ex-info "All fallback configs failed"
                       {:config-names config-names
-                       :errors errors}))
-      
+                       :errors       errors}))
+
       ;; Try next config
       (let [config-name (first remaining)
-            result (try
-                     (μ/log ::wrappers/fallback-attempt :litellm/kind :lib :config config-name)
-                     {:success true :result (completion-fn config-name request-map)}
-                     (catch Exception e
-                       (μ/log ::wrappers/fallback-config-failed
+            result      (try
+                          (mu/log ::fallback-attempt :litellm/kind :lib :config config-name)
+                          {:success true :result (completion-fn config-name request-map)}
+                          (catch Exception e
+                            (mu/log ::fallback-config-failed
                               :litellm/kind :lib
                               :config config-name
                               :error (.getMessage e)
                               :remaining (count (rest remaining)))
-                       {:success false :error e}))]
+                            {:success false :error e}))]
         (if (:success result)
           (:result result)
           (recur (rest remaining)
                  (conj errors {:config config-name
-                              :error (.getMessage (:error result))})))))))
+                               :error  (.getMessage (:error result))})))))))
 
 ;; ============================================================================
 ;; Retry Support
@@ -79,14 +79,14 @@
                 {:max-attempts 3 :backoff-ms 1000})"
   [config-name request-map completion-fn opts]
   (let [{:keys [max-attempts backoff-ms max-backoff-ms retry-on]
-         :or {max-attempts 3
-              backoff-ms 1000
-              max-backoff-ms 30000
-              retry-on (constantly true)}} opts]
-    
+         :or   {max-attempts   3
+                backoff-ms     1000
+                max-backoff-ms 30000
+                retry-on       (constantly true)}} opts]
+
     (loop [attempt 1]
       (let [result (try
-                     (μ/log ::wrappers/retry-attempt :litellm/kind :lib :attempt attempt :max-attempts max-attempts)
+                     (mu/log ::retry-attempt :litellm/kind :lib :attempt attempt :max-attempts max-attempts)
                      {:success true :result (completion-fn config-name request-map)}
                      (catch Exception e
                        {:success false :error e}))]
@@ -95,21 +95,21 @@
           (if (and (< attempt max-attempts)
                    (retry-on (:error result)))
             (let [delay-ms (exponential-backoff attempt backoff-ms max-backoff-ms)]
-              (μ/log ::wrappers/retry-backoff
-                     :litellm/kind :lib
-                     :attempt attempt
-                     :max-attempts max-attempts
-                     :delay-ms delay-ms
-                     :error (.getMessage (:error result)))
+              (mu/log ::retry-backoff
+                :litellm/kind :lib
+                :attempt attempt
+                :max-attempts max-attempts
+                :delay-ms delay-ms
+                :error (.getMessage (:error result)))
               (Thread/sleep delay-ms)
               (recur (inc attempt)))
-            
+
             ;; Max attempts reached or error not retryable
             (do
-              (μ/log ::wrappers/retry-exhausted
-                     :litellm/kind :lib
-                     :attempts attempt
-                     :error (.getMessage (:error result)))
+              (mu/log ::retry-exhausted
+                :litellm/kind :lib
+                :attempts attempt
+                :error (.getMessage (:error result)))
               (throw (:error result)))))))))
 
 ;; ============================================================================
@@ -135,31 +135,31 @@
   (let [{:keys [timeout-ms]} opts]
     (when-not timeout-ms
       (throw (ex-info "Timeout not specified" {:opts opts})))
-    
+
     (let [result-promise (promise)
-          result-future (future
+          result-future  (future
                           (try
                             (deliver result-promise
-                                    {:success true
-                                     :result (completion-fn config-name request-map)})
+                                     {:success true
+                                      :result  (completion-fn config-name request-map)})
                             (catch Exception e
                               (deliver result-promise
-                                      {:success false
-                                       :error e}))))
-          result (deref result-promise timeout-ms ::timeout)]
-      
+                                       {:success false
+                                        :error   e}))))
+          result         (deref result-promise timeout-ms ::timeout)]
+
       ;; Wait for result with timeout
       (cond
         (= result ::timeout)
         (do
           (future-cancel result-future)
           (throw (ex-info "Request timed out"
-                          {:timeout-ms timeout-ms
+                          {:timeout-ms  timeout-ms
                            :config-name config-name})))
-        
+
         (:success result)
         (:result result)
-        
+
         :else
         (throw (:error result))))))
 
@@ -186,32 +186,32 @@
                         {:messages [...]}
                         completion/chat
                         (fn [cost usage resp]
-                          (μ/log ::cost :amount cost :currency \"USD\")))"
+                          (mu/log ::cost :amount cost :currency \"USD\")))"
   [config-name request-map completion-fn callback]
-  (let [response (completion-fn config-name request-map)
-        usage (:usage response)
-        
+  (let [response        (completion-fn config-name request-map)
+        usage           (:usage response)
+
         ;; Resolve config to get provider/model for cost calculation
         resolved-config (if (keyword? config-name)
-                         (config/resolve-config config-name request-map)
-                         config-name)
-        
-        provider (:provider resolved-config)
-        model (:model resolved-config)
-        
+                          (config/resolve-config config-name request-map)
+                          config-name)
+
+        provider        (:provider resolved-config)
+        model           (:model resolved-config)
+
         ;; Calculate cost
-        cost (providers/calculate-cost
-               provider
-               model
-               (or (:prompt-tokens usage) 0)
-               (or (:completion-tokens usage) 0))]
-    
+        cost            (providers/calculate-cost
+                         provider
+                         model
+                         (or (:prompt-tokens usage) 0)
+                         (or (:completion-tokens usage) 0))]
+
     ;; Call callback with cost information
     (try
       (callback cost usage response)
       (catch Exception e
-        (μ/log ::wrappers/cost-callback-error :litellm/kind :lib :error (.getMessage e))))
-    
+        (mu/log ::cost-callback-error :litellm/kind :lib :error (.getMessage e))))
+
     ;; Return original response
     response))
 

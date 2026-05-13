@@ -1,6 +1,6 @@
 (ns litellm.router
   "Router-based configuration API for LiteLLM"
-  (:require [com.brunobonacci.mulog :as μ]
+  (:require [com.brunobonacci.mulog :as mu]
             [litellm.core :as core]
             [litellm.config :as config]))
 
@@ -78,13 +78,13 @@
                 {:messages [{:role :user :content \"Hello\"}]
                  :max-tokens 100})"
   [config-name request-map]
-  (let [resolved (config/resolve-config config-name request-map)
-        provider (:provider resolved)
-        model (:model resolved)
+  (let [resolved        (config/resolve-config config-name request-map)
+        provider        (:provider resolved)
+        model           (:model resolved)
         provider-config (:config resolved)
-        full-request (merge request-map
-                           (when provider-config
-                             (select-keys provider-config [:api-key :api-base])))]
+        full-request    (merge request-map
+                                (when provider-config
+                                  (select-keys provider-config [:api-key :api-base])))]
     (core/completion provider model full-request provider-config)))
 
 (defn chat
@@ -98,7 +98,7 @@
                    [{:role :system :content system-prompt}
                     {:role :user :content message}]
                    [{:role :user :content message}])
-        request {:messages messages}]
+        request  {:messages messages}]
     (completion config-name request)))
 
 ;; ============================================================================
@@ -108,78 +108,78 @@
 (defn setup-openai!
   "Quick setup for OpenAI with optional custom config name"
   [& {:keys [config-name api-key model]
-      :or {config-name :openai
-           model "gpt-4o-mini"}}]
+      :or   {config-name :openai
+             model       "gpt-4o-mini"}}]
   (let [key (or api-key (System/getenv "OPENAI_API_KEY"))]
     (when-not key
       (throw (ex-info "OpenAI API key not provided and OPENAI_API_KEY env var not set" {})))
     (register! config-name
                {:provider :openai
-                :model model
-                :config {:api-key key}})))
+                :model    model
+                :config   {:api-key key}})))
 
 (defn setup-anthropic!
   "Quick setup for Anthropic with optional custom config name"
   [& {:keys [config-name api-key model]
-      :or {config-name :anthropic
-           model "claude-3-sonnet-20240229"}}]
+      :or   {config-name :anthropic
+             model       "claude-3-sonnet-20240229"}}]
   (let [key (or api-key (System/getenv "ANTHROPIC_API_KEY"))]
     (when-not key
       (throw (ex-info "Anthropic API key not provided and ANTHROPIC_API_KEY env var not set" {})))
     (register! config-name
                {:provider :anthropic
-                :model model
-                :config {:api-key key}})))
+                :model    model
+                :config   {:api-key key}})))
 
 (defn setup-gemini!
   "Quick setup for Gemini with optional custom config name"
   [& {:keys [config-name api-key model]
-      :or {config-name :gemini
-           model "gemini-pro"}}]
+      :or   {config-name :gemini
+             model       "gemini-pro"}}]
   (let [key (or api-key (System/getenv "GEMINI_API_KEY"))]
     (when-not key
       (throw (ex-info "Gemini API key not provided and GEMINI_API_KEY env var not set" {})))
     (register! config-name
                {:provider :gemini
-                :model model
-                :config {:api-key key}})))
+                :model    model
+                :config   {:api-key key}})))
 
 (defn setup-mistral!
   "Quick setup for Mistral with optional custom config name"
   [& {:keys [config-name api-key model]
-      :or {config-name :mistral
-           model "mistral-medium"}}]
+      :or   {config-name :mistral
+             model       "mistral-medium"}}]
   (let [key (or api-key (System/getenv "MISTRAL_API_KEY"))]
     (when-not key
       (throw (ex-info "Mistral API key not provided and MISTRAL_API_KEY env var not set" {})))
     (register! config-name
                {:provider :mistral
-                :model model
-                :config {:api-key key}})))
+                :model    model
+                :config   {:api-key key}})))
 
 (defn setup-ollama!
   "Quick setup for Ollama with optional custom config name"
   [& {:keys [config-name api-base model]
-      :or {config-name :ollama
-           api-base "http://localhost:11434"
-           model "llama3"}}]
+      :or   {config-name :ollama
+             api-base    "http://localhost:11434"
+             model       "llama3"}}]
   (register! config-name
              {:provider :ollama
-              :model model
-              :config {:api-base api-base}}))
+              :model    model
+              :config   {:api-base api-base}}))
 
 (defn setup-openrouter!
   "Quick setup for OpenRouter with optional custom config name"
   [& {:keys [config-name api-key model]
-      :or {config-name :openrouter
-           model "openai/gpt-4"}}]
+      :or   {config-name :openrouter
+             model       "openai/gpt-4"}}]
   (let [key (or api-key (System/getenv "OPENROUTER_API_KEY"))]
     (when-not key
       (throw (ex-info "OpenRouter API key not provided and OPENROUTER_API_KEY env var not set" {})))
     (register! config-name
                {:provider :openrouter
-                :model model
-                :config {:api-key key}})))
+                :model    model
+                :config   {:api-key key}})))
 
 (defn setup-azure!
   "Quick setup for Azure OpenAI with required configuration.
@@ -193,10 +193,10 @@
   - :config-name - Config name to register (default: :azure)
   - :api-version - API version (default: 2024-10-21)"
   [& {:keys [config-name api-key api-base deployment api-version]
-      :or {config-name :azure
-           api-version "2024-10-21"}}]
-  (let [key (or api-key (System/getenv "AZURE_OPENAI_API_KEY"))
-        base (or api-base (System/getenv "AZURE_OPENAI_API_BASE"))
+      :or   {config-name :azure
+             api-version "2024-10-21"}}]
+  (let [key    (or api-key (System/getenv "AZURE_OPENAI_API_KEY"))
+        base   (or api-base (System/getenv "AZURE_OPENAI_API_BASE"))
         deploy (or deployment (System/getenv "AZURE_OPENAI_DEPLOYMENT"))]
     (when-not key
       (throw (ex-info "Azure OpenAI API key not provided and AZURE_OPENAI_API_KEY env var not set" {})))
@@ -206,11 +206,11 @@
       (throw (ex-info "Azure OpenAI deployment not provided and AZURE_OPENAI_DEPLOYMENT env var not set" {})))
     (register! config-name
                {:provider :azure
-                :model deploy  ; For Azure, model is the deployment name
-                :config {:api-key key
-                         :api-base base
-                         :deployment deploy
-                         :api-version api-version}})))
+                :model    deploy ; For Azure, model is the deployment name
+                :config   {:api-key     key
+                           :api-base    base
+                           :deployment  deploy
+                           :api-version api-version}})))
 
 (defn quick-setup!
   "Quick setup for common providers using environment variables
@@ -245,7 +245,7 @@
 
   (setup-ollama!)
 
-  (μ/log ::router/setup-complete :litellm/kind :lib :available-configs (list-configs)))
+  (mu/log ::setup-complete :litellm/kind :lib :available-configs (list-configs)))
 
 ;; ============================================================================
 ;; Helper for Creating Routers
@@ -263,7 +263,7 @@
       {:openai {:api-key \"sk-...\"}
        :anthropic {:api-key \"sk-...\"}})"
   [router-fn provider-configs]
-  {:router router-fn
+  {:router  router-fn
    :configs provider-configs})
 
 ;; ============================================================================

@@ -39,25 +39,25 @@
 (deftest test-validate-embedding-request-success
   (testing "Validate valid embedding request"
     (let [request {:model "text-embedding-3-small"
-                  :input "Hello world"}]
+                   :input "Hello world"}]
       (is (nil? (providers/validate-embedding-request :openai request))))))
 
 (deftest test-validate-embedding-request-unsupported-provider
   (testing "Validate embedding request for unsupported provider"
     (let [request {:model "claude-3-sonnet-20240229"
-                  :input "Hello world"}]
-      (is (thrown-with-msg? 
-            clojure.lang.ExceptionInfo
-            #"doesn't support embeddings"
-            (providers/validate-embedding-request :anthropic request))))))
+                   :input "Hello world"}]
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"doesn't support embeddings"
+           (providers/validate-embedding-request :anthropic request))))))
 
 (deftest test-validate-embedding-request-invalid-schema
   (testing "Validate invalid embedding request schema"
     (let [request {:model "text-embedding-3-small"}] ; missing :input
       (is (thrown-with-msg?
-            clojure.lang.ExceptionInfo
-            #"Invalid embedding request"
-            (providers/validate-embedding-request :openai request))))))
+           clojure.lang.ExceptionInfo
+           #"Invalid embedding request"
+           (providers/validate-embedding-request :openai request))))))
 
 ;; ============================================================================
 ;; Provider Status Tests
@@ -88,7 +88,7 @@
 (deftest test-estimate-request-tokens
   (testing "Estimate tokens for request"
     (let [request {:messages [{:role :user :content "Hello"}
-                             {:role :assistant :content "Hi there"}]}]
+                              {:role :assistant :content "Hi there"}]}]
       (is (number? (providers/estimate-request-tokens request)))
       (is (pos? (providers/estimate-request-tokens request))))))
 
@@ -101,7 +101,7 @@
     (let [cost (providers/calculate-cost :openai "gpt-4" 1000 500)]
       (is (number? cost))
       (is (pos? cost))))
-  
+
   (testing "Calculate cost for unknown models returns 0"
     (let [cost (providers/calculate-cost :unknown "unknown-model" 1000 500)]
       (is (number? cost))
@@ -123,7 +123,7 @@
 (deftest test-merge-provider-config
   (testing "Merge user config with provider defaults"
     (let [user-config {:timeout 5000 :custom-key "value"}
-          merged (providers/merge-provider-config :openai user-config)]
+          merged      (providers/merge-provider-config :openai user-config)]
       (is (= 5000 (:timeout merged)))
       (is (= "value" (:custom-key merged)))
       (is (contains? merged :max-retries)) ; From defaults
@@ -135,18 +135,18 @@
 
 (deftest test-validate-request
   (testing "Validate valid request"
-    (let [request {:model "gpt-4"
-                  :messages [{:role :user :content "test"}]}]
+    (let [request {:model    "gpt-4"
+                   :messages [{:role :user :content "test"}]}]
       (is (nil? (providers/validate-request :openai request)))))
-  
+
   (testing "Validate request with streaming for unsupported provider"
-    (let [request {:model "test"
-                  :messages [{:role :user :content "test"}]
-                  :stream true}]
+    (let [request {:model    "test"
+                   :messages [{:role :user :content "test"}]
+                   :stream   true}]
       ;; Anthropic supports streaming, so let's test with a hypothetical unsupported one
       ;; For now, all major providers support streaming, so we'll skip this test
       (is (true? true))))
-  
+
   (testing "Validate invalid request schema"
     (let [request {:model "gpt-4"}] ; missing :messages
       (is (thrown? clojure.lang.ExceptionInfo
@@ -174,7 +174,7 @@
       (is (= :openai (:provider parsed)))
       (is (= "gpt-4" (:model parsed)))
       (is (= "openai/gpt-4" (:original parsed))))
-    
+
     (let [parsed (providers/parse-model-string "gpt-4")]
       (is (= :openai (:provider parsed))) ; Default
       (is (= "gpt-4" (:model parsed)))
@@ -216,7 +216,7 @@
       (is (contains? limits :tokens-per-minute))
       (is (number? (:requests-per-minute limits)))
       (is (number? (:tokens-per-minute limits)))))
-  
+
   (testing "Get default rate limits for unknown provider"
     (let [limits (providers/get-rate-limits :nonexistent)]
       (is (map? limits))

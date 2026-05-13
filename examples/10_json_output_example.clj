@@ -39,12 +39,12 @@
 (defn example-json-object []
   (println "\n=== JSON Object Mode (OpenAI) ===")
   (let [response (litellm/completion
-                   :openai "gpt-4o-mini"
-                   {:messages [{:role :system :content "You are a helpful assistant."}
-                               {:role :user   :content "Return today's date and a fun fact as JSON."}]
-                    :response-format {:type :json-object}
-                    :max-tokens 256}
-                   {:api-key (System/getenv "OPENAI_API_KEY")})]
+                  :openai "gpt-4o-mini"
+                  {:messages        [{:role :system :content "You are a helpful assistant."}
+                                     {:role :user :content "Return today's date and a fun fact as JSON."}]
+                   :response-format {:type :json-object}
+                   :max-tokens      256}
+                  {:api-key (System/getenv "OPENAI_API_KEY")})]
     (println "Parsed:" (json/decode (litellm/extract-content response) true))))
 
 ;; ---------------------------------------------------------------------------
@@ -52,24 +52,24 @@
 ;; ---------------------------------------------------------------------------
 
 (def person-json-schema
-  {:type "object"
-   :properties {:name {:type "string"}
-                :age  {:type "integer"}
-                :city {:type "string"}}
-   :required ["name" "age" "city"]
+  {:type                 "object"
+   :properties           {:name {:type "string"}
+                          :age  {:type "integer"}
+                          :city {:type "string"}}
+   :required             ["name" "age" "city"]
    :additionalProperties false})
 
 (defn example-json-schema []
   (println "\n=== JSON Schema Mode (OpenAI, strict) ===")
   (let [response (litellm/completion
-                   :openai "gpt-4o-mini"
-                   {:messages [{:role :user :content "Generate a fictional person record."}]
-                    :response-format {:type :json-schema
-                                      :json-schema {:name   "person"
-                                                    :schema person-json-schema
-                                                    :strict true}}
-                    :max-tokens 128}
-                   {:api-key (System/getenv "OPENAI_API_KEY")})]
+                  :openai "gpt-4o-mini"
+                  {:messages        [{:role :user :content "Generate a fictional person record."}]
+                   :response-format {:type        :json-schema
+                                     :json-schema {:name   "person"
+                                                   :schema person-json-schema
+                                                   :strict true}}
+                   :max-tokens      128}
+                  {:api-key (System/getenv "OPENAI_API_KEY")})]
     (println "Parsed:" (json/decode (litellm/extract-content response) true))))
 
 ;; ---------------------------------------------------------------------------
@@ -83,19 +83,19 @@
 (def person-malli-schema
   [:map
    [:name :string]
-   [:age  :int]
+   [:age :int]
    [:city :string]])
 
 (defn example-malli-schema []
   (println "\n=== Malli Schema Mode (OpenAI) – :parsed-output available ===")
   (let [response (litellm/completion
-                   :openai "gpt-4o-mini"
-                   {:messages [{:role :user :content "Generate a fictional person record."}]
-                    :response-format {:type   :malli
-                                      :schema person-malli-schema}
-                    ;; :validate-output true  ; this is the default
-                    :max-tokens 128}
-                   {:api-key (System/getenv "OPENAI_API_KEY")})]
+                  :openai "gpt-4o-mini"
+                  {:messages        [{:role :user :content "Generate a fictional person record."}]
+                   :response-format {:type   :malli
+                                     :schema person-malli-schema}
+                   ;; :validate-output true  ; this is the default
+                   :max-tokens      128}
+                  {:api-key (System/getenv "OPENAI_API_KEY")})]
     (let [parsed (-> response :choices first :message :parsed-output)]
       (println "Keyword-keyed, type-safe output:" parsed)
       (println "Name:" (:name parsed)
@@ -109,13 +109,13 @@
 (defn example-malli-no-validate []
   (println "\n=== Malli Schema Mode – validation disabled ===")
   (let [response (litellm/completion
-                   :openai "gpt-4o-mini"
-                   {:messages [{:role :user :content "Generate a person record."}]
-                    :response-format {:type   :malli
-                                      :schema person-malli-schema}
-                    :validate-output false     ; skip Malli decode/validate
-                    :max-tokens 128}
-                   {:api-key (System/getenv "OPENAI_API_KEY")})]
+                  :openai "gpt-4o-mini"
+                  {:messages        [{:role :user :content "Generate a person record."}]
+                   :response-format {:type   :malli
+                                     :schema person-malli-schema}
+                   :validate-output false ; skip Malli decode/validate
+                   :max-tokens      128}
+                  {:api-key (System/getenv "OPENAI_API_KEY")})]
     ;; :parsed-output will be nil; raw JSON string still available
     (println "Raw content:" (litellm/extract-content response))))
 
@@ -126,17 +126,17 @@
 (defn example-anthropic-structured []
   (println "\n=== Anthropic – native output_config (json-schema) ===")
   (let [response (litellm/completion
-                   :anthropic "claude-sonnet-4-5"
-                   {:messages [{:role :user
-                                :content "List three programming languages with release years."}]
-                    :response-format {:type   :malli
-                                      :schema [:map
-                                               [:languages
-                                                [:vector [:map
-                                                          [:name :string]
-                                                          [:year :int]]]]]}
-                    :max-tokens 256}
-                   {:api-key (System/getenv "ANTHROPIC_API_KEY")})]
+                  :anthropic "claude-sonnet-4-5"
+                  {:messages        [{:role    :user
+                                      :content "List three programming languages with release years."}]
+                   :response-format {:type   :malli
+                                     :schema [:map
+                                              [:languages
+                                               [:vector [:map
+                                                         [:name :string]
+                                                         [:year :int]]]]]}
+                   :max-tokens      256}
+                  {:api-key (System/getenv "ANTHROPIC_API_KEY")})]
     (println "Parsed:" (-> response :choices first :message :parsed-output))))
 
 ;; ---------------------------------------------------------------------------
@@ -146,22 +146,22 @@
 (defn example-cross-provider []
   (println "\n=== Same Malli schema across providers ===")
   (doseq [[provider model env-var]
-          [[:openai    "gpt-4o-mini"             "OPENAI_API_KEY"]
-           [:anthropic "claude-haiku-4-5"        "ANTHROPIC_API_KEY"]
-           [:mistral   "mistral-small-latest"    "MISTRAL_API_KEY"]]]
+          [[:openai "gpt-4o-mini" "OPENAI_API_KEY"]
+           [:anthropic "claude-haiku-4-5" "ANTHROPIC_API_KEY"]
+           [:mistral "mistral-small-latest" "MISTRAL_API_KEY"]]]
     (when (System/getenv env-var)
       (println (str "Provider: " (name provider)))
       (let [response (litellm/completion
-                       provider model
-                       {:messages [{:role :user
-                                    :content "Give me a product: name (string), price (float), in_stock (bool)."}]
-                        :response-format {:type   :malli
-                                          :schema [:map
-                                                   [:name     :string]
-                                                   [:price    :double]
-                                                   [:in_stock :boolean]]}
-                        :max-tokens 128}
-                       {:api-key (System/getenv env-var)})]
+                      provider model
+                      {:messages        [{:role    :user
+                                          :content "Give me a product: name (string), price (float), in_stock (bool)."}]
+                       :response-format {:type   :malli
+                                         :schema [:map
+                                                  [:name :string]
+                                                  [:price :double]
+                                                  [:in_stock :boolean]]}
+                       :max-tokens      128}
+                      {:api-key (System/getenv env-var)})]
         (println "  Result:" (-> response :choices first :message :parsed-output))))))
 
 ;; ---------------------------------------------------------------------------
