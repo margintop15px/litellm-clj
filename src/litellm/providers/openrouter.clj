@@ -16,11 +16,31 @@
   "Transform messages to OpenRouter format (same as OpenAI)"
   [messages]
   (map (fn [msg]
-         (let [base {:role    (name (:role msg))
-                     :content (:content msg)}]
-           (cond-> base
-             (:name msg) (assoc :name (:name msg))
-             (:tool-call-id msg) (assoc :tool_call_id (:tool-call-id msg)))))
+         (let [tool-calls (:tool-calls msg)
+               content    (:content msg)]
+           (cond-> {:role (name (:role msg))}
+             (and (some? content)
+                  (or (not (string? content))
+                      (not (str/blank? content))))
+             (assoc :content content)
+
+             (and (nil? content) (empty? tool-calls))
+             (assoc :content "")
+
+             (:name msg)
+             (assoc :name (:name msg))
+
+             (:tool-call-id msg)
+             (assoc :tool_call_id (:tool-call-id msg))
+
+             (seq tool-calls)
+             (assoc :tool_calls
+                    (mapv (fn [tool-call]
+                            {:id       (:id tool-call)
+                             :type     (or (:type tool-call) "function")
+                             :function {:name      (get-in tool-call [:function :name])
+                                        :arguments (get-in tool-call [:function :arguments])}})
+                          tool-calls)))))
        messages))
 
 (defn transform-tools
@@ -239,35 +259,62 @@
             (mu/log ::sse-parse-error :litellm/kind :lib :error (.getMessage e))
             nil))))))
 
-(defn transform-streaming-chunk
-  "Transform OpenRouter streaming chunk to standard format"
+(defn- transform-streaming-tool-calls
+  [tool-calls]
+  (mapv (fn [tool-call]
+          (let [function (:function tool-call)]
+            (cond-> {}
+              (contains? tool-call :index)
+              (assoc :index (:index tool-call))
+
+              (:id tool-call)
+              (assoc :id (:id tool-call))
+
+              (:type tool-call)
+              (assoc :type (:type tool-call))
+
+              function
+              (assoc :function
+                     (cond-> {}
+                       (:name function)
+                       (assoc :name (:name function))
+
+                       (contains? function :arguments)
+                       (assoc :arguments (:arguments function)))))))
+        tool-calls))
+
+(defn- transform-streaming-chunk*
   [chunk]
   (let [choice (first (:choices chunk))
-        delta  (:delta choice)]
+        delta  (:delta choice)
+        tool-calls (:tool_calls delta)]
     {:id      (:id chunk)
      :object  (:object chunk)
      :created (:created chunk)
      :model   (:model chunk)
-     :choices [{:index         (:index choice)
-                :delta         {:role    (keyword (:role delta))
-                                :content (:content delta)}
-                :finish-reason (when (:finish_reason choice)
-                                 (keyword (:finish_reason choice)))}]}))
+     :choices [(cond-> {:index (:index choice)
+                        :delta (cond-> {}
+                                 (:role delta)
+                                 (assoc :role (keyword (:role delta)))
+
+                                 (some? (:content delta))
+                                 (assoc :content (:content delta))
+
+                                 (seq tool-calls)
+                                 (assoc :tool-calls
+                                        (transform-streaming-tool-calls tool-calls)))}
+                (some? (:finish_reason choice))
+                (assoc :finish-reason (keyword (:finish_reason choice))))]}))
+
+(defn transform-streaming-chunk
+  "Transform OpenRouter streaming chunk to standard format"
+  [chunk]
+  (transform-streaming-chunk* chunk))
 
 (defn transform-streaming-chunk-impl
   "OpenRouter-specific transform-streaming-chunk implementation"
   [provider-name chunk]
-  (let [choice (first (:choices chunk))
-        delta  (:delta choice)]
-    {:id      (:id chunk)
-     :object  (:object chunk)
-     :created (:created chunk)
-     :model   (:model chunk)
-     :choices [{:index         (:index choice)
-                :delta         {:role    (keyword (:role delta))
-                                :content (:content delta)}
-                :finish-reason (when (:finish_reason choice)
-                                 (keyword (:finish_reason choice)))}]}))
+  (transform-streaming-chunk* chunk))
 
 (defn make-streaming-request-impl
   "OpenRouter-specific make-streaming-request implementation"
