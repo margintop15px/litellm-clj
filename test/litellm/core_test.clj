@@ -378,3 +378,23 @@
                     :validate-output false}
           result   (#'core/apply-output-validation response request)]
       (is (nil? (get-in result [:choices 0 :message :parsed-output]))))))
+
+(deftest test-apply-output-validation-lazy-seq-choices
+  (testing "handles a LazySeq :choices (what provider transforms produce via (map ...)) — regression for the assoc-in ClassCastException"
+    (let [schema   [:map [:name :string] [:age :int]]
+          ;; provider transforms build :choices with (map transform-choice ...), a LazySeq,
+          ;; NOT a vector — assoc-in into a LazySeq at index 0 previously threw.
+          response {:choices (map identity
+                                  [{:index         0
+                                    :message       {:role :assistant :content "{\"name\":\"Alice\",\"age\":30}"}
+                                    :finish-reason :stop}])
+                    :usage   {:prompt-tokens 5 :completion-tokens 5 :total-tokens 10}}
+          request  {:model           "gpt-4o"
+                    :messages        [{:role :user :content "hi"}]
+                    :response-format {:type :malli :schema schema}}
+          result   (#'core/apply-output-validation response request)]
+      (is (instance? clojure.lang.LazySeq (:choices response)) "fixture really is a LazySeq")
+      (is (= {:name "Alice" :age 30}
+             (get-in result [:choices 0 :message :parsed-output]))
+          "parsed-output is attached without a ClassCastException")
+      (is (vector? (:choices result)) ":choices is normalized to a vector on the way out"))))
