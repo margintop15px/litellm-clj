@@ -5,6 +5,7 @@
             [hato.client :as http]
             [cheshire.core :as json]
             [com.brunobonacci.mulog :as mu]
+            [clojure.string :as str]
             [clojure.core.async :as async :refer [go >!]]))
 
 (defn- ?assoc
@@ -21,14 +22,39 @@
 ;; ============================================================================
 
 (defn transform-messages
-  "Transform messages to Azure OpenAI format (OpenAI-compatible)"
+  "Transform messages to Azure OpenAI format (OpenAI-compatible).
+
+  Echoes an assistant message's `:tool-calls` back to the provider — Azure (like
+  OpenAI) requires the assistant message that issued the `tool_calls` to precede the
+  corresponding `:tool` result messages, so dropping it breaks any multi-turn tool
+  conversation. Assistant tool-call messages legitimately carry nil `:content`."
   [messages]
   (map (fn [msg]
-         (let [base {:role    (name (:role msg))
-                     :content (:content msg)}]
-           (cond-> base
-             (:name msg) (assoc :name (:name msg))
-             (:tool-call-id msg) (assoc :tool_call_id (:tool-call-id msg)))))
+         (let [tool-calls (:tool-calls msg)
+               content    (:content msg)]
+           (cond-> {:role (name (:role msg))}
+             (and (some? content)
+                  (or (not (string? content))
+                      (not (str/blank? content))))
+             (assoc :content content)
+
+             (and (nil? content) (empty? tool-calls))
+             (assoc :content "")
+
+             (:name msg)
+             (assoc :name (:name msg))
+
+             (:tool-call-id msg)
+             (assoc :tool_call_id (:tool-call-id msg))
+
+             (seq tool-calls)
+             (assoc :tool_calls
+                    (mapv (fn [tool-call]
+                            {:id       (:id tool-call)
+                             :type     (or (:type tool-call) "function")
+                             :function {:name      (get-in tool-call [:function :name])
+                                        :arguments (get-in tool-call [:function :arguments])}})
+                          tool-calls)))))
        messages))
 
 (defn transform-tools

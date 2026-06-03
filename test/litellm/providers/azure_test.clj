@@ -15,6 +15,29 @@
       (is (= "user" (:role (first transformed))))
       (is (= "Hello" (:content (first transformed)))))))
 
+(deftest test-transform-messages-echoes-assistant-tool-calls
+  (testing "an assistant message's tool_calls are echoed back (required for multi-turn tool calls); nil content is dropped, tool result keeps tool_call_id"
+    (let [messages    [{:role :user :content "What's the magic number?"}
+                       {:role       :assistant
+                        :content    nil
+                        :tool-calls [{:id       "call_1"
+                                      :type     "function"
+                                      :function {:name "get_magic_number" :arguments "{}"}}]}
+                       {:role :tool :tool-call-id "call_1" :content "{\"magic\":4242}"}]
+          transformed (vec (azure/transform-messages messages))
+          assistant   (nth transformed 1)
+          tool        (nth transformed 2)]
+      (is (= 3 (count transformed)))
+      (is (= "assistant" (:role assistant)))
+      (is (= 1 (count (:tool_calls assistant))))
+      (is (= "call_1" (get-in assistant [:tool_calls 0 :id])))
+      (is (= "function" (get-in assistant [:tool_calls 0 :type])))
+      (is (= "get_magic_number" (get-in assistant [:tool_calls 0 :function :name])))
+      (is (not (contains? assistant :content)))
+      (is (= "tool" (:role tool)))
+      (is (= "call_1" (:tool_call_id tool)))
+      (is (= "{\"magic\":4242}" (:content tool))))))
+
 (deftest test-transform-tools
   (testing "Transform tools to Azure OpenAI format"
     (let [tools       [{:function {:name        "get_weather"

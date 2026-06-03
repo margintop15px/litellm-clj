@@ -173,3 +173,25 @@
            clojure.lang.ExceptionInfo
            #"Invalid embedding response"
            (schemas/validate-embedding-response! response))))))
+
+;; ============================================================================
+;; Multi-turn tool-call conversation (regression: nil assistant :content)
+;; ============================================================================
+
+(deftest test-valid-request-multi-turn-tool-call-conversation
+  (testing "a request whose assistant message issued tool_calls (nil :content) followed
+            by a tool result validates — Message :content must permit nil, otherwise
+            every multi-turn tool conversation is rejected at request validation"
+    (let [request {:model    "gpt-4o-mini"
+                   :messages [{:role :user :content "What is the magic number?"}
+                              {:role       :assistant
+                               :content    nil
+                               :tool-calls [{:id       "call_1"
+                                             :type     "function"
+                                             :function {:name      "get_magic_number"
+                                                        :arguments "{}"}}]}
+                              {:role         :tool
+                               :tool-call-id "call_1"
+                               :content      "{\"magic\":4242}"}]}]
+      (is (true? (schemas/valid-request? request)))
+      (is (nil? (schemas/explain-request request))))))

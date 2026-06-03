@@ -14,7 +14,7 @@
 (def Message
   [:map
    [:role Role]
-   [:content {:optional true} :string] ; Allow nil for assistant messages with tool-calls
+   [:content {:optional true} [:maybe :string]] ; Allow nil for assistant messages with tool-calls
    [:name {:optional true} :string]
    [:tool-call-id {:optional true} :string]
    [:reasoning-content {:optional true} :string] ; Reasoning/thinking content from models
