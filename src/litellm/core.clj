@@ -70,7 +70,11 @@
           (let [parsed  (json/decode content true)
                 decoded (m/decode malli-schema parsed json-decoder)]
             (if (m/validate malli-schema decoded)
-              (assoc-in response [:choices 0 :message :parsed-output] decoded)
+              ;; Coerce :choices to a vector before assoc-in: provider transforms build
+              ;; it with (map transform-choice ...) (a LazySeq), and assoc-in into a
+              ;; LazySeq at index 0 throws ClassCastException (LazySeq is not Associative).
+              (assoc-in (update response :choices vec)
+                        [:choices 0 :message :parsed-output] decoded)
               (throw (ex-info "Response does not match the provided Malli schema"
                               {:type   :validation-error
                                :errors (me/humanize (m/explain malli-schema decoded))}))))
