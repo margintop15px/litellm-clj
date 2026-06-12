@@ -150,6 +150,53 @@
       (is (= "llama3" (:model result))))))
 
 ;; ============================================================================
+;; Sampling Options Tests (temperature / top_p / num_predict)
+;; ============================================================================
+
+(deftest test-transform-request-options-chat
+  (testing "Chat API forwards explicit temperature 0 under :options"
+    (let [request {:model       "ollama_chat/llama3"
+                   :messages    [{:role :user :content "Hello"}]
+                   :temperature 0}
+          result  (ollama/transform-request-impl :ollama request {})]
+      (is (contains? result :messages))
+      (is (= 0 (get-in result [:options :temperature])))))
+
+  (testing "Chat API forwards top-p and max-tokens (num_predict)"
+    (let [request {:model      "ollama_chat/llama3"
+                   :messages   [{:role :user :content "Hello"}]
+                   :top-p      0.5
+                   :max-tokens 256}
+          result  (ollama/transform-request-impl :ollama request {})]
+      (is (= 0.5 (get-in result [:options :top_p])))
+      (is (= 256 (get-in result [:options :num_predict])))))
+
+  (testing "Chat API applies defaults when sampling params absent"
+    (let [request {:model    "ollama_chat/llama3"
+                   :messages [{:role :user :content "Hello"}]}
+          result  (ollama/transform-request-impl :ollama request {})]
+      (is (= {:num_predict 128 :temperature 0.7 :top_p 1.0}
+             (:options result)))))
+
+  (testing "Tools request (chat API) also carries :options"
+    (let [request {:model    "llama3"
+                   :messages [{:role :user :content "What's the weather?"}]
+                   :tools    [{:type     "function"
+                               :function {:name       "get_weather"
+                                          :parameters {:type "object"}}}]}
+          result  (ollama/transform-request-impl :ollama request {})]
+      (is (contains? result :options)))))
+
+(deftest test-transform-request-options-generate
+  (testing "Generate API forwards explicit temperature 0 under :options"
+    (let [request {:model       "llama3"
+                   :messages    [{:role :user :content "Hello"}]
+                   :temperature 0}
+          result  (ollama/transform-request-impl :ollama request {})]
+      (is (contains? result :prompt))
+      (is (= 0 (get-in result [:options :temperature]))))))
+
+;; ============================================================================
 ;; Response Transformation Tests
 ;; ============================================================================
 
