@@ -1,5 +1,6 @@
 # v0.3.0-alpha.2
 - Ollama function calling / tools support
+- Ollama: forward sampling options (`temperature`/`top_p`/`max-tokens`) on the `/api/chat` endpoint — previously dropped, so chat/tool requests ignored `:temperature` and ran at the model's default
 - Azure provider: hanging parenthesis fix
 - Azure AD authentication support
 - Bedrock provider moved to optional contrib module

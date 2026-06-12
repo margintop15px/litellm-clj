@@ -191,12 +191,19 @@
                             :json-schema (get-in request [:response-format :json-schema :schema])
                             nil)
           ;; Prefer explicit :format key, fall back to derived ollama-format
-          resolved-format (or (:format request) ollama-format)]
+          resolved-format (or (:format request) ollama-format)
+          ;; Sampling options shared by both the chat and generate endpoints.
+          ;; Ollama nests these under :options; an explicit temperature of 0 is
+          ;; truthy in Clojure, so the `or`-default only applies when absent.
+          options         {:num_predict (or (:max-tokens request) 128)
+                           :temperature (or (:temperature request) 0.7)
+                           :top_p       (or (:top-p request) 1.0)}]
       (if is-chat
         ;; Chat API format (supports tools)
         (cond-> {:model    actual-model
                  :messages (transform-messages-for-chat messages)
-                 :stream   (:stream request false)}
+                 :stream   (:stream request false)
+                 :options  options}
           resolved-format (assoc :format resolved-format)
           (:tools request) (assoc :tools (transform-tools (:tools request)))
           (:tool-choice request) (assoc :tool_choice (transform-tool-choice (:tool-choice request))))
@@ -205,9 +212,7 @@
         (cond-> {:model   actual-model
                  :prompt  (transform-messages-for-generate messages)
                  :stream  (:stream request false)
-                 :options {:num_predict (or (:max-tokens request) 128)
-                           :temperature (or (:temperature request) 0.7)
-                           :top_p       (or (:top-p request) 1.0)}}
+                 :options options}
           resolved-format (assoc :format resolved-format))))))
 
 (defn make-request-impl
